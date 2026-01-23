@@ -170,19 +170,18 @@ class Crawler:
     def extract_movimentos(self, movimentos_json: bs) -> list[str, str]:
         """"""
         movimentos = []
-        mov_json = json.loads(movimentos_json)
+        mov_dict = json.loads(movimentos_json)
+        movimentos = mov_dict["data"]
 
-        movimentos_raw = mov_json["data"]
-
-        movimentos = [
+        movimentos_list = [
             {
                 "data": m.get("data"),
                 "descricao": m.get("descricao"),
             }
-            for m in movimentos_raw
+            for m in movimentos
         ]
 
-        return movimentos
+        return movimentos_list
 
 
 
@@ -191,7 +190,7 @@ async def main():
     robo = Crawler()
     try:
 
-        primeiro = await robo.request_auth("https://consulta-processual-service.tjrs.jus.br/api/consulta-service/v1/consultaProcesso?numeroProcesso=50016466620268210008&codComarca=8")
+        primeiro = await robo.request_auth("https://consulta-processual-service.tjrs.jus.br/api/consulta-service/v1/consultaMovimentacao?numeroProcesso=50016466620268210008&codComarca=8")
         print(primeiro.__dict__ if primeiro else None)
 
     finally:

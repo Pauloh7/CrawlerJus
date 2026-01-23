@@ -36,7 +36,6 @@ async def search_npu(cliente: schema.ClienteInput) -> list[dict]:
         comarca = extract_comarca(npu)
         urlconsult = f"https://consulta-processual-service.tjrs.jus.br/api/consulta-service/v1/consultaProcesso?numeroProcesso={npu}&codComarca={comarca}"
         urlmovimentos = f"https://consulta-processual-service.tjrs.jus.br/api/consulta-service/v1/consultaMovimentacao?numeroProcesso=50016466620268210008&codComarca=8"
-        urlmovimentos = f""
         if not valida_npu(npu):
             raise HTTPException(
                 status_code=400,
