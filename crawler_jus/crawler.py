@@ -1,23 +1,15 @@
 import logging
-import re
 import asyncio
 import base64
 import hashlib
 import json
-from datetime import datetime
-from bs4 import BeautifulSoup as bs
 from tenacity import (
     retry,
     wait_fixed,
     stop_after_attempt,
 )
-from util import (
-    remove_blank_space,
-    remove_special_characters,
-)
-from processo import *
-from curl_cffi.requests import AsyncSession,Response
-from urllib.parse import urlencode
+from .util import extract_comarca, remove_special_characters
+from curl_cffi.requests import AsyncSession
 
 logger = logging.getLogger()
 
@@ -55,7 +47,7 @@ class Crawler:
         self.client = AsyncSession(
             impersonate="chrome120",
             timeout=30,
-            verify=False,
+            verify=True,
         )
         self.url_token_request = "https://consulta-processual-service.tjrs.jus.br/api/consulta-service/public/auth/token"
         self.url_token_submit = "https://consulta-processual-service.tjrs.jus.br/api/consulta-service/public/auth/submit"
@@ -78,8 +70,7 @@ class Crawler:
         final_str = f"{auth}:{ie}"
         return base64.b64encode(final_str.encode()).decode()
     
-    @staticmethod
-    def solve_challenge(salt, challenge, maxnumber):
+    def solve_challenge(self, salt, challenge, maxnumber):
         for i in range(maxnumber + 1):
             attempt = salt + str(i)
             result = hashlib.sha256(attempt.encode()).hexdigest()
@@ -121,34 +112,25 @@ class Crawler:
 
 
     @retry(wait=wait_fixed(1), stop=stop_after_attempt(5), reraise=True)
-    async def request_auth(self,url) -> Processo:
+    async def request_auth(self,url) -> str:
         auth = await self.create_authorization()
-        print(auth)
         response = await self.request_page(auth=auth,url=url)
-        movimentos = await self.extract_movimentos(response.text)
-        return auth
+        basic_data = await self.extract_basic_data(response.text)
+        return basic_data
         
 
     @retry(wait=wait_fixed(1), stop=stop_after_attempt(5), reraise=True)
-    async def request_page(self, auth: str,url: str) -> Processo:
-        headers = self.headers_consulta
-        headers["Authorization"] = auth
+    async def request_page(self, auth: str,url: str) -> json:
+        headers = {**self.headers_consulta, "Authorization": auth}
         return await self.client.get(
            url,headers=headers
-        )                                                                                                                     
+        ).text                                                                                                                     
 
 
-    def extract_basic_data(self, basic_data_json: dict) -> dict:
-        data = {
-            "nomeClasse": None,
-            "nomeNatureza": None,
-            "classeCNJ": None,
-            "assuntoCNJ": None,
-            "partes": [], 
-        }
-        data_ditc = json.loads(basic_data_json)
-        basic = data_ditc["data"][0]
-        partes = data_ditc["data"][0]["partes"]["parte"]
+    def extract_basic_data(self, basic_data_json: json) -> dict:
+        data_dict = json.loads(basic_data_json)
+        basic = (data_dict.get("data") or [{}])[0]
+        partes = basic.get("partes", {}).get("parte", [])
         partes_list = [
             {
                 "descricaoTipo": p.get("descricaoTipo"),
@@ -167,11 +149,10 @@ class Crawler:
         return data
 
 
-    def extract_movimentos(self, movimentos_json: bs) -> list[str, str]:
+    def extract_movimentos(self, movimentos_json: str) -> list[dict[str]]:
         """"""
-        movimentos = []
         mov_dict = json.loads(movimentos_json)
-        movimentos = mov_dict["data"]
+        movimentos = mov_dict.get("data") or []
 
         movimentos_list = [
             {
@@ -189,9 +170,32 @@ class Crawler:
 async def main():
     robo = Crawler()
     try:
-
-        primeiro = await robo.request_auth("https://consulta-processual-service.tjrs.jus.br/api/consulta-service/v1/consultaMovimentacao?numeroProcesso=50016466620268210008&codComarca=8")
-        print(primeiro.__dict__ if primeiro else None)
+        npu_list = [
+        '5001646-66.2026.8.21.0008',
+        '5001437-97.2026.8.21.0008',
+        '5006512-41.2026.8.21.0001',
+        '5002803-95.2026.8.21.0001',
+        '5059773-31.2025.8.21.0008',
+        '5037275-17.2025.8.21.0015',
+        '5034351-53.2025.8.21.0073',
+        '5324952-46.2025.8.21.0001',
+        '5034160-31.2025.8.21.0033',
+        '5317349-19.2025.8.21.0001',
+        '5317128-36.2025.8.21.0001',
+        '5010384-59.2025.8.21.0014',
+        '5056077-84.2025.8.21.0008',
+        '5003595-28.2025.8.21.0084',
+        '6000461-52.2025.8.21.3001',
+        '5027923-11.2025.8.21.0023',
+        '5023236-79.2025.8.21.0026',
+        '5027334-19.2025.8.21.0023'
+        ]
+        for npu in npu_list:
+            npu = remove_special_characters(npu)
+            comarca = extract_comarca(npu)
+            url = f"https://consulta-processual-service.tjrs.jus.br/api/consulta-service/v1/consultaProcesso?numeroProcesso={npu}&codComarca={comarca}"
+            result = await robo.request_auth(url)
+            print(result)
 
     finally:
         await robo.client.close()

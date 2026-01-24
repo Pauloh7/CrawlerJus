@@ -21,10 +21,15 @@ def remove_special_characters(texto):
 
 def extract_comarca(npu:str) -> str:
         ''''''
-        comarca = str(int(npu[-6:-4]))
+        comarca = str(int(npu[-4:]))
 
         return comarca
 
+def build_url_processo(npu: str, comarca: str) -> str:
+    return f"https://consulta-processual-service.tjrs.jus.br/api/consulta-service/v1/consultaProcesso?numeroProcesso={npu}&codComarca={comarca}"
+
+def build_url_movimento(npu: str, comarca: str) -> str:
+    return f"https://consulta-processual-service.tjrs.jus.br/api/consulta-service/v1/consultaMovimentacao?numeroProcesso={npu}&codComarca={comarca}"
 
 def valida_npu(npu):
     '''
