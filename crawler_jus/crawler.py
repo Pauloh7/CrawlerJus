@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import time
 import base64
 import hashlib
 import json
@@ -10,18 +11,25 @@ from tenacity import (
 )
 from .util import extract_comarca, remove_special_characters
 from curl_cffi.requests import AsyncSession
+from typing import Optional
 
 logger = logging.getLogger()
 
 
 class Crawler:
     """
-    Robo que extrai dados do site TJAL(Tribunal de Justiça do Estado de Alagoas)
+    Robo que extrai dados do site TJRS(Tribunal de Justiça do Estado do Rio Grande do Sul)
 
     Attributes:
         timeout (int): Padrao de timeout para tentativas de conexao
-        urlconsutla (str): Url de consulta de processos de alagoas primeira instancia
-
+        headers_consulta: Headers padrao utilizado para requesiçoes de site,
+        client: Cliente async que faz as requisiçoes
+        url_token_request: Url de requisição do token challenge de acesso
+        url_token_submit: Url de subimissão do token challenge de acesso
+        _auth_value: Valor do challenge resolvido em cache
+        _auth_expires_at: Horario em que a chave challenge em cache expira
+        _auth_lock: Trava async de codigo critico
+        _auth_ttl_seconds: Tempo medio que a chave challenge deve durar
     """
 
     def __init__(self):
@@ -51,12 +59,46 @@ class Crawler:
         )
         self.url_token_request = "https://consulta-processual-service.tjrs.jus.br/api/consulta-service/public/auth/token"
         self.url_token_submit = "https://consulta-processual-service.tjrs.jus.br/api/consulta-service/public/auth/submit"
-        
-    
-    async def close(self):
-        await self.client.close()
+        self._auth_value: Optional[str] = None
+        self._auth_expires_at: float = 0.0
+        self._auth_lock = asyncio.Lock()
+        self._auth_ttl_seconds = 300 
 
-    def obfuscate(self, auth):
+    async def close(self):
+        """Função que fecha o cliente de requisiçoes web"""
+        await self.client.close()
+        
+    async def get_auth(self, force_refresh: bool = False) -> str:
+        """Função que controla o token challenge em cache
+        Args:
+            force_refresh (bool): bool que determina se o token challenge vai ser atualizado forçadamente
+        Returns:
+            auth (str): Token challenge resolvido
+        """
+        now = time.time()
+
+        if not force_refresh and self._auth_value and now < self._auth_expires_at:
+            return self._auth_value
+
+        async with self._auth_lock:
+            now = time.time()
+            if not force_refresh and self._auth_value and now < self._auth_expires_at:
+                return self._auth_value
+
+            auth = await self.create_authorization()
+            self._auth_value = auth
+            self._auth_expires_at = now + self._auth_ttl_seconds
+            return auth
+    
+    
+
+    def obfuscate(self, auth: str)-> str:
+        """Função que calcula o segredo que vai junto ao token challenge com base no mesmo para acesso ao site
+        Args:
+            auth (str): Token challenge resolvido
+        Returns:
+            final_str (str): Token challenge mais segredo em base64
+        """
         id_num = int(auth.replace("ChaAnon_", ""))
         
         n = (id_num % 60029) + 90767
@@ -70,7 +112,15 @@ class Crawler:
         final_str = f"{auth}:{ie}"
         return base64.b64encode(final_str.encode()).decode()
     
-    def solve_challenge(self, salt, challenge, maxnumber):
+    def solve_challenge(self, salt: int, challenge: int, maxnumber: int) -> int:
+        """Função que calcula o token challenge
+        Args:
+            salt (int): Parte do calculo do desafio
+            challenge(int): Número a ser encontrado
+            maxnumber(int): Número maximo que challenge pode ter
+        Returns:
+            i (int): Número resultado do challenge
+        """
         for i in range(maxnumber + 1):
             attempt = salt + str(i)
             result = hashlib.sha256(attempt.encode()).hexdigest()
@@ -79,10 +129,21 @@ class Crawler:
                 return i
         return None
     
-    async def create_authorization(self):
+    @retry(wait=wait_fixed(1), stop=stop_after_attempt(5), reraise=True)
+    async def create_authorization(self) -> str:
+        """Função que controla todo o processo de criação da token challenge fazendo desde a requisição do desafio, a requisição de
+        solução do challenge e retorno da chave para o acesso ao site
+        Args:
+        Returns:
+            authorization (str): Token pronto para ser enviado na requisição de consulta ao site
+        Raises:
+        RuntimeError: Erro de requisição do challenge
+        """
         challenge_token = await self.client.get(
             self.url_token_request
         )
+        if challenge_token.status_code != 200:
+            raise RuntimeError(f"Challenge request failed: {challenge_token.status_code}")
         challenge_data = json.loads(challenge_token.text)
         challenge_result = await asyncio.to_thread (self.solve_challenge, challenge_data["salt"], challenge_data["challenge"],  challenge_data["maxnumber"])
         payload = {
@@ -102,32 +163,51 @@ class Crawler:
             self.url_token_submit, 
             data=form_data
             )
-        authorization = json.loads(authorization_response.text)
-        authorization = await asyncio.to_thread (self.obfuscate,authorization["username"])
-        authorization = f"Basic {authorization}"
+        authorization_json = json.loads(authorization_response.text)
+        authorization_obfuscated = await asyncio.to_thread (self.obfuscate,authorization_json["username"])
+        authorization = f"Basic {authorization_obfuscated}"
 
         return authorization
         
     
 
 
-    @retry(wait=wait_fixed(1), stop=stop_after_attempt(5), reraise=True)
-    async def request_auth(self,url) -> str:
-        auth = await self.create_authorization()
-        response = await self.request_page(auth=auth,url=url)
-        basic_data = await self.extract_basic_data(response.text)
-        return basic_data
+    # @retry(wait=wait_fixed(1), stop=stop_after_attempt(5), reraise=True)
+    # async def request_auth(self) -> str:
+    #     auth = await self.create_authorization()
+    #     # response = await self.request_page(auth=auth,url=url)
+    #     # basic_data = await self.extract_basic_data(response.text)
+    #     return auth
         
 
     @retry(wait=wait_fixed(1), stop=stop_after_attempt(5), reraise=True)
-    async def request_page(self, auth: str,url: str) -> json:
+    async def request_page(self, url: str) -> json:
+        """Função que executa as requisições das paginas de dados e movimentos com o challenge em cache,
+        caso acesso nao seja autorizado pede para recriar o token de autorização
+        Args:
+        url (str): Url da requisição
+        Returns:
+            resp (json): Retorna json que é retornado pelo site com as informações buscadas
+        """
+        auth = await self.get_auth()
         headers = {**self.headers_consulta, "Authorization": auth}
-        return await self.client.get(
-           url,headers=headers
-        ).text                                                                                                                     
+
+        resp = await self.client.get(url, headers=headers)
+
+        if resp.status_code in (401, 403):
+            auth = await self.get_auth(force_refresh=True)
+            headers = {**self.headers_consulta, "Authorization": auth}
+            resp = await self.client.get(url, headers=headers)      
+        return resp.text                                                                                             
 
 
-    def extract_basic_data(self, basic_data_json: json) -> dict:
+    def extract_basic_data_partes(self, basic_data_json: json) -> dict:
+        """Função que extrai dados basicos e partes do processo.
+        Args:
+        basic_data_json (json): Json com dados que vem do site
+        Returns:
+            data (dict): Dicionario com dados de interesse
+        """
         data_dict = json.loads(basic_data_json)
         basic = (data_dict.get("data") or [{}])[0]
         partes = basic.get("partes", {}).get("parte", [])
@@ -149,8 +229,13 @@ class Crawler:
         return data
 
 
-    def extract_movimentos(self, movimentos_json: str) -> list[dict[str]]:
-        """"""
+    def extract_movimentos(self, movimentos_json: json) -> list[dict[str]]:
+        """Função que extrai dados movimentos do processo.
+        Args:
+        movimentos_json (json): Json com movimentos que vem do site
+        Returns:
+            movimentos_list (list): Lista de dicionarios contendo data e descrição dos movimentos
+        """
         mov_dict = json.loads(movimentos_json)
         movimentos = mov_dict.get("data") or []
 
@@ -199,19 +284,3 @@ async def main():
 
     finally:
         await robo.client.close()
-
-if __name__ == "__main__":
-    asyncio.run(main())        
-
-    # AL-code 07108025520188020001
-    # AL-nocode 08033402420198020000
-    # TJCE - 00703379120088060001
-    # 0805757-08.2023.8.02.0000
-    # 07114332320238020001
-    # tribunal = extract_tribunal("07108025520188020001")
-    # primeiro_grau_info = robo.send_request_primeiro_grau(
-    #     "07108025520188020001", tribunal
-    # )
-    # print(primeiro_grau_info)
-    # segundo_grau_info = robo.send_request_segundo_grau("07108025520188020001", tribunal)
-    # print(segundo_grau_info)

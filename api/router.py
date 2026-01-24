@@ -40,12 +40,11 @@ async def search_npu(cliente: schema.ClienteInput) -> dict:
                 status_code=400,
                 detail="Número do processo inválido",
             )
-        auth = await crawler.request_auth()
         basic_data_json, movimentos_json = await asyncio.gather(
-            crawler.request_page(auth,urlconsult),
-            crawler.request_page(auth,urlmovimentos),
+            crawler.request_page(urlconsult),
+            crawler.request_page(urlmovimentos),
         )
-        basic_data = crawler.extract_basic_data(basic_data_json)
+        basic_data = crawler.extract_basic_data_partes(basic_data_json)
         movimentos = crawler.extract_movimentos(movimentos_json)
 
         results = {**basic_data, "movimentos": movimentos}
