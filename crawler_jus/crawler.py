@@ -12,6 +12,8 @@ from tenacity import (
 from .util import extract_comarca, remove_special_characters
 from curl_cffi.requests import AsyncSession
 from typing import Optional
+import random
+from .exceptions import TJRSRateLimit
 
 logger = logging.getLogger()
 
@@ -35,23 +37,10 @@ class Crawler:
     def __init__(self):
         self.headers_consulta = {
             "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7,es;q=0.6,pt-PT;q=0.5",
-            "Authorization": "",
+            "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
             "Origin": "https://consulta.tjrs.jus.br",
             "Referer": "https://consulta.tjrs.jus.br/",
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/141.0.0.0 Safari/537.36 OPR/125.0.0.0"
-            ),
-            "Sec-CH-UA": "\"Opera GX\";v=\"125\", \"Not?A_Brand\";v=\"8\", \"Chromium\";v=\"141\"",
-            "Sec-CH-UA-Mobile": "?0",
-            "Sec-CH-UA-Platform": "\"Windows\"",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-site",
-            "Priority": "u=1, i",
-        }
+            }
         self.client = AsyncSession(
             impersonate="chrome120",
             timeout=30,
@@ -67,7 +56,35 @@ class Crawler:
     async def close(self):
         """Função que fecha o cliente de requisiçoes web"""
         await self.client.close()
-        
+
+    def is_rate_limited(self, text: str) -> tuple[bool, str]:
+        """Função que testa se erro 429 esta no texto enviado
+        Args:
+            text (str): texto do json de reposta de consulta no site
+        Returns:
+            bool (bool): bool de retorno que indica se encontrou ou nao 429 no texto
+            message (str) : mensagem do encontrada junto ao erro 429 
+        """
+        try:
+            text_json = json.loads(text)
+        except Exception:
+            return False, ""
+
+        if text_json.get("exceptionKey") == 429:
+            message = (text_json.get("messages") or [""])[0]
+            return True, message
+
+        return False, ""
+    
+    async def sleep_backoff(self, attempt: int, base=1, cap=60):
+        """Função que aguarda tempo baseado na quantidade de tentivas ja feitas
+        Args:
+            attempt (int): Quantidade de tentativas
+        """
+        wait = min(cap, base * (2 ** attempt))
+        wait = wait + random.uniform(0, 1)       
+        await asyncio.sleep(wait)
+
     async def get_auth(self, force_refresh: bool = False) -> str:
         """Função que controla o token challenge em cache
         Args:
@@ -101,7 +118,7 @@ class Crawler:
         """
         id_num = int(auth.replace("ChaAnon_", ""))
         
-        n = (id_num % 60029) + 90767
+        n = (id_num % 60029) + 90778
         
         me = id_num * n
     
@@ -122,7 +139,7 @@ class Crawler:
             i (int): Número resultado do challenge
         """
         for i in range(maxnumber + 1):
-            attempt = salt + str(i)
+            attempt = f"{salt}{i}"
             result = hashlib.sha256(attempt.encode()).hexdigest()
             
             if result == challenge:
@@ -169,42 +186,48 @@ class Crawler:
 
         return authorization
         
-    
-
-
-    # @retry(wait=wait_fixed(1), stop=stop_after_attempt(5), reraise=True)
-    # async def request_auth(self) -> str:
-    #     auth = await self.create_authorization()
-    #     # response = await self.request_page(auth=auth,url=url)
-    #     # basic_data = await self.extract_basic_data(response.text)
-    #     return auth
-        
 
     @retry(wait=wait_fixed(1), stop=stop_after_attempt(5), reraise=True)
     async def request_page(self, url: str) -> json:
         """Função que executa as requisições das paginas de dados e movimentos com o challenge em cache,
         caso acesso nao seja autorizado pede para recriar o token de autorização
         Args:
-        url (str): Url da requisição
+            url (str): Url da requisição
         Returns:
             resp (json): Retorna json que é retornado pelo site com as informações buscadas
+        Raises:
+            TJRSRateLimit: Erro de rate limit persistente
         """
-        auth = await self.get_auth()
-        headers = {**self.headers_consulta, "Authorization": auth}
+        max_attempts = 8
 
-        resp = await self.client.get(url, headers=headers)
-
-        if resp.status_code in (401, 403):
-            auth = await self.get_auth(force_refresh=True)
+        for attempt in range(max_attempts):
+            auth = await self.get_auth()
             headers = {**self.headers_consulta, "Authorization": auth}
-            resp = await self.client.get(url, headers=headers)      
-        return resp.text                                                                                             
+            resp = await self.client.get(url, headers=headers)
+            text = resp.text
+
+            if resp.status_code in (401, 403):
+                auth = await self.get_auth(force_refresh=True)
+                headers["Authorization"] = auth
+                resp = await self.client.get(url, headers=headers)
+                text = resp.text
+
+            is429, msg = self.is_rate_limited(text)
+            if is429:
+                print(f"[429] {msg} | tentativa {attempt+1}/{max_attempts}")
+                await self.sleep_backoff(attempt, base=2, cap=60)
+                continue
+
+        
+            return text
+
+        raise TJRSRateLimit("Limite de chamadas atingido (TJRS). Tente novamente.", retry_after=30)                                                                                             
 
 
-    def extract_basic_data_partes(self, basic_data_json: json) -> dict:
+    def extract_basic_data_partes(self, basic_data_json: str) -> dict:
         """Função que extrai dados basicos e partes do processo.
         Args:
-        basic_data_json (json): Json com dados que vem do site
+            basic_data_json (json): Json com dados que vem do site
         Returns:
             data (dict): Dicionario com dados de interesse
         """
@@ -229,10 +252,10 @@ class Crawler:
         return data
 
 
-    def extract_movimentos(self, movimentos_json: json) -> list[dict[str]]:
+    def extract_movimentos(self, movimentos_json: str) -> list[dict[str]]:
         """Função que extrai dados movimentos do processo.
         Args:
-        movimentos_json (json): Json com movimentos que vem do site
+            movimentos_json (json): Json com movimentos que vem do site
         Returns:
             movimentos_list (list): Lista de dicionarios contendo data e descrição dos movimentos
         """
@@ -248,39 +271,3 @@ class Crawler:
         ]
 
         return movimentos_list
-
-
-
-
-async def main():
-    robo = Crawler()
-    try:
-        npu_list = [
-        '5001646-66.2026.8.21.0008',
-        '5001437-97.2026.8.21.0008',
-        '5006512-41.2026.8.21.0001',
-        '5002803-95.2026.8.21.0001',
-        '5059773-31.2025.8.21.0008',
-        '5037275-17.2025.8.21.0015',
-        '5034351-53.2025.8.21.0073',
-        '5324952-46.2025.8.21.0001',
-        '5034160-31.2025.8.21.0033',
-        '5317349-19.2025.8.21.0001',
-        '5317128-36.2025.8.21.0001',
-        '5010384-59.2025.8.21.0014',
-        '5056077-84.2025.8.21.0008',
-        '5003595-28.2025.8.21.0084',
-        '6000461-52.2025.8.21.3001',
-        '5027923-11.2025.8.21.0023',
-        '5023236-79.2025.8.21.0026',
-        '5027334-19.2025.8.21.0023'
-        ]
-        for npu in npu_list:
-            npu = remove_special_characters(npu)
-            comarca = extract_comarca(npu)
-            url = f"https://consulta-processual-service.tjrs.jus.br/api/consulta-service/v1/consultaProcesso?numeroProcesso={npu}&codComarca={comarca}"
-            result = await robo.request_auth(url)
-            print(result)
-
-    finally:
-        await robo.client.close()

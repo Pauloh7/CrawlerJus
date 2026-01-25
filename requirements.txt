@@ -1,0 +1,4 @@
+fastapi
+uvicorn[standard]
+tenacity
+curl_cffi

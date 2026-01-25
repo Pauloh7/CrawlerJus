@@ -4,6 +4,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from crawler_jus.crawler import Crawler
 from crawler_jus.util import *
+from fastapi.responses import JSONResponse
+from crawler_jus.exceptions import TJRSRateLimit
 
 
 @asynccontextmanager
@@ -27,6 +29,7 @@ async def search_npu(cliente: schema.ClienteInput) -> dict:
         processo_info (dict): Dicionário com dados do processo
     Raises:
         HTTPException: Erro de processamento na requisição
+        TJRSRateLimit: Erro de limite de requisiçoes
     """
 
     try:
@@ -55,7 +58,12 @@ async def search_npu(cliente: schema.ClienteInput) -> dict:
             )
 
         return results
-
+    except TJRSRateLimit as e:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": e.message},
+            headers={"Retry-After": str(e.retry_after)},
+        )
     except HTTPException:
         raise
     except Exception:
