@@ -15,7 +15,7 @@ Este projeto tem como objetivo montar uma aplicação REST para extrair dados de
    - [Instalação](#instalação)  
    - [Executando o Projeto](#executando-projeto)  
 4. [Funcionalidades da API](#funcionalidades-da-api)  
-   - [Buscando processo](#buscando_processo)  
+   - [Buscando processo](#buscando-processo)  
 5. [Executando os Testes](#executando-os-testes)  
 6. [Autor](#autor)  
 
