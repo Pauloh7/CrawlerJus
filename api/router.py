@@ -6,6 +6,8 @@ from crawler_jus.crawler import Crawler
 from crawler_jus.util import *
 from fastapi.responses import JSONResponse
 from crawler_jus.exceptions import TJRSRateLimit
+from api.cache import get_cache, set_cache
+import json
 
 
 @asynccontextmanager
@@ -36,6 +38,10 @@ async def search_npu(cliente: schema.ClienteInput) -> dict:
         crawler: Crawler = app.state.crawler
         npu = remove_special_characters(cliente.npu)
         comarca = extract_comarca(npu)
+        cache_key = f"tjrs:{comarca}:{npu}"
+        cached = await get_cache(cache_key)
+        if cached:
+            return cached
         urlconsult = build_url_processo(npu,comarca)
         urlmovimentos = build_url_movimento(npu,comarca)
         if not valida_npu(npu):
@@ -43,6 +49,7 @@ async def search_npu(cliente: schema.ClienteInput) -> dict:
                 status_code=400,
                 detail="Número do processo inválido",
             )
+        
         basic_data_json, movimentos_json = await asyncio.gather(
             crawler.request_page(urlconsult),
             crawler.request_page(urlmovimentos),
@@ -51,11 +58,14 @@ async def search_npu(cliente: schema.ClienteInput) -> dict:
         movimentos = crawler.extract_movimentos(movimentos_json)
 
         results = {**basic_data, "movimentos": movimentos}
+        
 
         if not results:
             raise HTTPException(
                 status_code=404, detail="Nenhum processo encontrado"
             )
+        
+        await set_cache(cache_key, results)
 
         return results
     except TJRSRateLimit as e:

@@ -8,6 +8,7 @@ dist/
 build/
 
 # Virtualenv
+.venv/
 venv/
 .env
 .env.*

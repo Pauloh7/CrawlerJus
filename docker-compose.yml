@@ -1,0 +1,19 @@
+services:
+  api:
+    build:
+      context: .
+      args:
+        ENV: dev
+    ports:
+      - "8000:8000"
+    environment:
+      - CACHE_URL=redis://redis:6379/0
+      - CACHE_TTL_SECONDS=300
+    depends_on:
+      - redis
+    command: uvicorn api.router:app --host 0.0.0.0 --port 8000
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
