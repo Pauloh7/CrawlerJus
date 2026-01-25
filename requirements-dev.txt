@@ -1,0 +1,8 @@
+pytest-sugar
+pytest
+pytest-asyncio
+httpx
+fastapi
+uvicorn[standard]
+tenacity
+curl_cffi
