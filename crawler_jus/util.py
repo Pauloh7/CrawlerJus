@@ -87,7 +87,13 @@ def valida_npu(npu):
 
     return int(npu[7:9]) == digito_verificador
 
-def find_main_js():
+def find_main_js() -> str:
+    """
+    Função que descobre nome do arquivo main_js do tribunal
+    Args:
+    Returns:
+    full_url (str): retorna url completa do main_js
+    """
 
     url_base = "https://consulta.tjrs.jus.br/consulta-processual/"
     response = requests.get(url_base)
@@ -104,16 +110,22 @@ def find_main_js():
         return full_url
 
 
-def find_obfuscate_and_extract_big_int():
+def find_obfuscate_and_extract_big_int() -> tuple:
+    """
+    Função que encontra metodo de obfuscação do secrete e extrai numeros base do calculo
+    Args:
+    Returns:
+    big_ints (tuple): Tupla com os dois numeros do calculo
+    """
 
     main_js_url = find_main_js()
 
     response = requests.get(main_js_url)
     js_code = response.text
     obfuscate_code = re.search(r"obfuscation\s*\([^)]*\)\s*\{[\s\S]*?BigInt\s*\(\s*\d+\s*\)[\s\S]*?BigInt\s*\(\s*\d+\s*\)", js_code)[0]
-    big_int = re.findall(r"BigInt\s*\(\s*(\d+)\s*\)", obfuscate_code)
-    print(big_int)
-    return big_int
+    big_ints = re.findall(r"BigInt\s*\(\s*(\d+)\s*\)", obfuscate_code)
+    print(big_ints)
+    return big_ints
     
 
 if __name__ == "__main__":
