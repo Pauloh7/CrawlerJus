@@ -47,7 +47,7 @@ git clone git@github.com:Pauloh7/CrawlerJus.git
 * Navegar até a pasta do projeto
 * Executar o comando
 ```
-docker compose -f docker-compose.prod.yml build --no-cache
+docker compose -f docker-compose.prod.yml build
 ```
 * O docker irá buildar a imagem, depois rode. 
 ```
