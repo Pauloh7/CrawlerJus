@@ -350,13 +350,39 @@ class Crawler:
             for p in partes
         ]
         data = {
+            "numeroProcesso": basic.get("numeroCNJFormatado"),
+            "numeroProcessoCNJ": basic.get("numeroCNJ"),
+            "classe": basic.get("classeCNJ"),
+            "assunto": basic.get("assuntoCNJ"),
             "nomeClasse": basic.get("nomeClasse"),
             "nomeNatureza": basic.get("nomeNatureza"),
-            "classeCNJ": basic.get("classeCNJ"),
-            "assuntoCNJ": basic.get("assuntoCNJ"),
-            "partes": partes_list,
-        }
+            
+            "comarca": basic.get("comarca", {}).get("nome"),
+            "codigoComarca": basic.get("codigoComarca"),
+            
+            "dataDistribuicao": basic.get("dataDistribuicao"),
+            "dataPropositura": basic.get("dataPropositura"),
+            
+            "situacaoProcesso": basic.get("situacaoProcesso"),
+            "segredoJustica": basic.get("segredoJustica"),
+            "tipoProcesso": basic.get("tipoProcesso"),
 
+            "orgaoJulgador": basic.get("orgaoJulgador", {}).get("nome"),
+        }
+        processos_vinculados = [
+            {
+                "numeroProcesso": pv.get("numeroCNJ"),
+                "numeroFormatado": pv.get("numeroCNJFormatado"),
+                "classe": pv.get("classeCNJ"),
+                "assunto": pv.get("assuntoCNJ"),
+                "comarca": pv.get("codigoComarca"),
+                "orgaoJulgador": pv.get("nomeOrgaoJulgador"),
+                "ultimaMovimentacao": pv.get("dataUltimaMovimentacao"),
+            }
+            for pv in basic.get("processosVinculados", [])
+        ]
+
+        data["processosVinculados"] = processos_vinculados
         return data
 
     def extract_movimentos(self, movimentos_json: str) -> list[dict[str]]:

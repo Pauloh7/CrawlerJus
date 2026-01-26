@@ -25,11 +25,9 @@ async def search_npu(cliente: schema.ClienteInput, force_refresh: bool = Query(F
     """Parte da api que recebe o post com dados do processo e executa chamada para extração dos dados
     Args:
         cliente (schema.ClienteInput): Json com numero do processo
+        force_refresh (bool): Determina se é para forçar ou nao refresh no cache redis
     Returns:
         processo_info (dict): Dicionário com dados do processo
-    Raises:
-        HTTPException: Erro de processamento na requisição
-        TJRSRateLimit: Erro de limite de requisiçoes
     """
     service = SearchService(app.state.crawler)
     return await service.search_npu(cliente.npu, force_refresh=force_refresh)
