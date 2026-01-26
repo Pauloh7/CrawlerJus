@@ -9,7 +9,7 @@ services:
     environment:
       - CACHE_URL=redis://redis:6379/0
       - CACHE_TTL_SECONDS=300
-      - PYTHONPATH=/app
+      - PYTHONPATH=/crawlerjus
     depends_on:
       - redis
     command: uvicorn api.router:app --host 0.0.0.0 --port 8000 --reload
