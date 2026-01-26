@@ -9,7 +9,6 @@ from tenacity import (
     wait_fixed,
     stop_after_attempt,
 )
-from .util import extract_comarca, remove_special_characters
 from curl_cffi.requests import AsyncSession
 from typing import Optional
 import random
