@@ -129,10 +129,23 @@ docker compose run --rm api poetry run pytest -q
 * Os testes devem executar automaticamente e o resultado será exibido na tela
 
 # Relatório Final
-## Descrição da fonte e dos principais desafios técnicos encontrados;
-### A fonte utilizada foi a consulta processual do TJRS(Tribunal de Justiça do Estado do Rio Grande do Sul).
-###
-* Dos principais desafios certamente se destacam o processo de investigar o acesso ao site, para descobrir a existencia de um token de acesso, desvendar como esse token é formado e recriar o processo de formação dele. O token era formado de um challenge e um segredo gerado por codigo encontrado nos initiators da ferramenta de dev do navegador.
-* Outro desafio foi lidar com erros 429(limite de acessos permitidos). Esse problema foi contornado utilizando um processo de tentativas e espera que evita a api simplesmente retornar erro. Alem disso foi implementado um sistema de cache com redis para reduzir consultas desnecessarias caso uma busca ja tenha sido feita.
+## Descrição da fonte e dos principais desafios técnicos encontrados
+* A fonte utilizada foi a consulta processual do TJRS(Tribunal de Justiça do Estado do Rio Grande do Sul).
+### Principais desafios técnicos
+* Entre os principais desafios, destaca-se o processo de investigação do mecanismo de acesso ao site, que envolveu a identificação da existência de um token de autenticação, a compreensão de como esse token é gerado e a recriação do seu processo de formação. O token era composto por um challenge e por um segredo gerado a partir de código identificado nos initiators da ferramenta de desenvolvedor do navegador. Além disso, durante o desenvolvimento, o site alterou o método de geração desse segredo em duas ocasiões, o que motivou a criação de uma automação capaz de extrair dinamicamente os números utilizados na formação do segredo.
+* Outro desafio foi lidar com erros HTTP 429 (limite de requisições permitidas). Esse problema foi contornado por meio de um mecanismo de retentativas com tempo de espera (retry com backoff), evitando que a API retornasse erros de forma imediata. Além disso, foi implementado um sistema de cache com Redis para reduzir consultas desnecessárias quando uma busca já havia sido realizada anteriormente.
+##Estratégias adotadas para realizar a coleta
+* A coleta dos dados foi relativamente simples, uma vez que o site disponibiliza as informações em formato JSON. Assim, foi necessário apenas realizar o parse das respostas e extrair os campos de interesse.
+## Resultados obtidos com o protótipo
+* O protótipo desenvolvido demonstrou ser capaz de realizar consultas automatizadas ao sistema do TJRS de forma eficiente e confiável. A solução implementada permitiu a obtenção dos dados processuais por meio da reprodução do mecanismo de autenticação do site, incluindo a resolução do challenge e a geração do token de acesso. Além disso, o protótipo incorporou mecanismos de tratamento de erros, como retentativas com controle de tempo de espera para lidar com limitações de requisições (HTTP 429), e um sistema de cache baseado em Redis, que reduziu significativamente o número de consultas repetidas ao servidor. Como resultado, o sistema apresentou maior estabilidade, desempenho e resiliência frente às variações do comportamento do site.
+## Validações implementadas para garantir qualidade dos dados;
+* Foram implementadas validações para garantir a qualidade e a consistência dos dados coletados. Entre essas validações, destacam-se a verificação do formato do número do processo (NPU), o tratamento de respostas inválidas ou incompletas do servidor, a validação da estrutura dos dados retornados em JSON e o controle de erros durante o processo de extração. Essas medidas contribuíram para assegurar a confiabilidade das informações obtidas pelo protótipo.
+## Possíveis melhorias para reduzir falhas e facilitar manutenção
+* Melhorar a resiliência à mudança do JavaScript do site: reduzir dependência de regex “frágeis” e adicionar validações/fallbacks na extração do algoritmo de obfuscação (por exemplo, verificar se os dois BigInt numéricos foram encontrados e registrar alerta quando o padrão mudar).
+* Cache distribuído para parâmetros do segredo e do token: além do cache do resultado da consulta (Redis), armazenar também o main.js/BigInts e o token em cache compartilhado com TTL curto. Isso reduz recomputações em múltiplos workers e diminui a quantidade de requisições ao TJRS.
+* Controle de concorrência com lock distribuído: em cenários com múltiplas instâncias, aplicar lock no Redis para evitar que vários workers tentem regenerar token/segredo ao mesmo tempo, reduzindo picos de requisições e chances de 401/429.
+* Backoff mais aderente ao upstream: priorizar o header Retry-After quando presente e manter jitter no backoff, reduzindo falhas recorrentes por rate limit.
+* Observabilidade e diagnósticos: incluir logs estruturados (com npu, comarca, tentativa, status code e origem cache/upstream) e métricas (taxa de 401/429/5xx e tempo de resposta) para facilitar detecção de mudanças no site e acelerar a manutenção.
+* Expansão e refinamento dos testes automatizados: adicionar testes específicos para cenários críticos (401 → refresh do token; 429 → backoff; retorno HTML; JSON inválido; indisponibilidade do Redis), reduzindo regressões e aumentando confiabilidade.
 ## Autor
 [Paulo Henrique De Souza Gomes](https://www.linkedin.com/in/paulo-henrique-4a849139/)
