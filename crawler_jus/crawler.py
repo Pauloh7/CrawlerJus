@@ -349,11 +349,12 @@ class Crawler:
             }
             for p in partes
         ]
+        
         data = {
             "numeroProcesso": basic.get("numeroCNJFormatado"),
             "numeroProcessoCNJ": basic.get("numeroCNJ"),
-            "classe": basic.get("classeCNJ"),
-            "assunto": basic.get("assuntoCNJ"),
+            "classeCNJ": basic.get("classeCNJ"),
+            "assuntoCNJ": basic.get("assuntoCNJ"),
             "nomeClasse": basic.get("nomeClasse"),
             "nomeNatureza": basic.get("nomeNatureza"),
             
@@ -369,6 +370,7 @@ class Crawler:
 
             "orgaoJulgador": basic.get("orgaoJulgador", {}).get("nome"),
         }
+        data["partes"] = partes_list
         processos_vinculados = [
             {
                 "numeroProcesso": pv.get("numeroCNJ"),
