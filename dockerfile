@@ -29,6 +29,8 @@ RUN if [ "$ENV" = "dev" ]; then \
       poetry install --no-interaction --no-ansi --only main ; \
     fi
 
+RUN poetry config virtualenvs.create false \
+&& poetry install --no-interaction --no-ansi --only main
 
 COPY . /crawlerjus
 
