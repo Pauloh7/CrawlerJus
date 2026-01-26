@@ -40,7 +40,7 @@ class Crawler:
             "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
             "Origin": "https://consulta.tjrs.jus.br",
             "Referer": "https://consulta.tjrs.jus.br/",
-            }
+        }
         self.client = AsyncSession(
             impersonate="chrome120",
             timeout=30,
@@ -51,7 +51,7 @@ class Crawler:
         self._auth_value: Optional[str] = None
         self._auth_expires_at: float = 0.0
         self._auth_lock = asyncio.Lock()
-        self._auth_ttl_seconds = 300 
+        self._auth_ttl_seconds = 300
 
     async def close(self):
         """Função que fecha o cliente de requisiçoes web"""
@@ -63,7 +63,7 @@ class Crawler:
             text (str): texto do json de reposta de consulta no site
         Returns:
             bool (bool): bool de retorno que indica se encontrou ou nao 429 no texto
-            message (str) : mensagem do encontrada junto ao erro 429 
+            message (str) : mensagem do encontrada junto ao erro 429
         """
         try:
             text_json = json.loads(text)
@@ -75,14 +75,14 @@ class Crawler:
             return True, message
 
         return False, ""
-    
+
     async def sleep_backoff(self, attempt: int, base=1, cap=60):
         """Função que aguarda tempo baseado na quantidade de tentivas ja feitas
         Args:
             attempt (int): Quantidade de tentativas
         """
-        wait = min(cap, base * (2 ** attempt))
-        wait = wait + random.uniform(0, 1)       
+        wait = min(cap, base * (2**attempt))
+        wait = wait + random.uniform(0, 1)
         await asyncio.sleep(wait)
 
     async def get_auth(self, force_refresh: bool = False) -> str:
@@ -106,10 +106,8 @@ class Crawler:
             self._auth_value = auth
             self._auth_expires_at = now + self._auth_ttl_seconds
             return auth
-    
-    
 
-    def obfuscate(self, auth: str)-> str:
+    def obfuscate(self, auth: str) -> str:
         """Função que calcula o segredo que vai junto ao token challenge com base no mesmo para acesso ao site
         Args:
             auth (str): Token challenge resolvido
@@ -117,18 +115,18 @@ class Crawler:
             final_str (str): Token challenge mais segredo em base64
         """
         id_num = int(auth.replace("ChaAnon_", ""))
-        
+
         n = (id_num % 60029) + 90778
-        
+
         me = id_num * n
-    
+
         se = f"@{n}@{me}!"
-        
+
         ie = hashlib.sha256(se.encode()).hexdigest()
-        
+
         final_str = f"{auth}:{ie}"
         return base64.b64encode(final_str.encode()).decode()
-    
+
     def solve_challenge(self, salt: int, challenge: int, maxnumber: int) -> int:
         """Função que calcula o token challenge
         Args:
@@ -141,11 +139,11 @@ class Crawler:
         for i in range(maxnumber + 1):
             attempt = f"{salt}{i}"
             result = hashlib.sha256(attempt.encode()).hexdigest()
-            
+
             if result == challenge:
                 return i
         return None
-    
+
     @retry(wait=wait_fixed(1), stop=stop_after_attempt(5), reraise=True)
     async def create_authorization(self) -> str:
         """Função que controla todo o processo de criação da token challenge fazendo desde a requisição do desafio, a requisição de
@@ -156,36 +154,39 @@ class Crawler:
         Raises:
         RuntimeError: Erro de requisição do challenge
         """
-        challenge_token = await self.client.get(
-            self.url_token_request
-        )
+        challenge_token = await self.client.get(self.url_token_request)
         if challenge_token.status_code != 200:
-            raise RuntimeError(f"Challenge request failed: {challenge_token.status_code}")
+            raise RuntimeError(
+                f"Challenge request failed: {challenge_token.status_code}"
+            )
         challenge_data = json.loads(challenge_token.text)
-        challenge_result = await asyncio.to_thread (self.solve_challenge, challenge_data["salt"], challenge_data["challenge"],  challenge_data["maxnumber"])
+        challenge_result = await asyncio.to_thread(
+            self.solve_challenge,
+            challenge_data["salt"],
+            challenge_data["challenge"],
+            challenge_data["maxnumber"],
+        )
         payload = {
             "algorithm": challenge_data["algorithm"],
             "challenge": challenge_data["challenge"],
             "number": challenge_result,
             "salt": challenge_data["salt"],
-            "signature": challenge_data["signature"]
+            "signature": challenge_data["signature"],
         }
 
-        json_str = json.dumps(payload, separators=(',', ':'))
+        json_str = json.dumps(payload, separators=(",", ":"))
         token_base64 = base64.b64encode(json_str.encode()).decode()
-        form_data = {
-            "altcha": token_base64 
-        }
-        authorization_response =  await self.client.post(
-            self.url_token_submit, 
-            data=form_data
-            )
+        form_data = {"altcha": token_base64}
+        authorization_response = await self.client.post(
+            self.url_token_submit, data=form_data
+        )
         authorization_json = json.loads(authorization_response.text)
-        authorization_obfuscated = await asyncio.to_thread (self.obfuscate,authorization_json["username"])
+        authorization_obfuscated = await asyncio.to_thread(
+            self.obfuscate, authorization_json["username"]
+        )
         authorization = f"Basic {authorization_obfuscated}"
 
         return authorization
-        
 
     @retry(wait=wait_fixed(1), stop=stop_after_attempt(5), reraise=True)
     async def request_page(self, url: str) -> json:
@@ -218,11 +219,11 @@ class Crawler:
                 await self.sleep_backoff(attempt, base=2, cap=60)
                 continue
 
-        
             return text
 
-        raise TJRSRateLimit("Limite de chamadas atingido (TJRS). Tente novamente.", retry_after=30)                                                                                             
-
+        raise TJRSRateLimit(
+            "Limite de chamadas atingido (TJRS). Tente novamente.", retry_after=30
+        )
 
     def extract_basic_data_partes(self, basic_data_json: str) -> dict:
         """Função que extrai dados basicos e partes do processo.
@@ -240,17 +241,16 @@ class Crawler:
                 "nome": p.get("nome"),
             }
             for p in partes
-]
+        ]
         data = {
             "nomeClasse": basic.get("nomeClasse"),
             "nomeNatureza": basic.get("nomeNatureza"),
             "classeCNJ": basic.get("classeCNJ"),
             "assuntoCNJ": basic.get("assuntoCNJ"),
-            "partes":partes_list
+            "partes": partes_list,
         }
 
         return data
-
 
     def extract_movimentos(self, movimentos_json: str) -> list[dict[str]]:
         """Função que extrai dados movimentos do processo.

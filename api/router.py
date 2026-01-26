@@ -9,7 +9,6 @@ from crawler_jus.exceptions import TJRSRateLimit
 from api.cache import get_cache, set_cache
 
 
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     crawler = Crawler()
@@ -21,6 +20,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
 
 @app.post("/search_npu/")
 async def search_npu(cliente: schema.ClienteInput) -> dict:
@@ -42,14 +42,14 @@ async def search_npu(cliente: schema.ClienteInput) -> dict:
         cached = await get_cache(cache_key)
         if cached:
             return cached
-        urlconsult = build_url_processo(npu,comarca)
-        urlmovimentos = build_url_movimento(npu,comarca)
+        urlconsult = build_url_processo(npu, comarca)
+        urlmovimentos = build_url_movimento(npu, comarca)
         if not valida_npu(npu):
             raise HTTPException(
                 status_code=400,
                 detail="Número do processo inválido",
             )
-        
+
         basic_data_json, movimentos_json = await asyncio.gather(
             crawler.request_page(urlconsult),
             crawler.request_page(urlmovimentos),
@@ -58,13 +58,10 @@ async def search_npu(cliente: schema.ClienteInput) -> dict:
         movimentos = crawler.extract_movimentos(movimentos_json)
 
         results = {**basic_data, "movimentos": movimentos}
-        
 
         if not results:
-            raise HTTPException(
-                status_code=404, detail="Nenhum processo encontrado"
-            )
-        
+            raise HTTPException(status_code=404, detail="Nenhum processo encontrado")
+
         await set_cache(cache_key, results)
 
         return results
@@ -74,7 +71,7 @@ async def search_npu(cliente: schema.ClienteInput) -> dict:
             content={"detail": e.message},
             headers={"Retry-After": str(e.retry_after)},
         )
-    
+
     except HTTPException:
         raise
     except Exception:
