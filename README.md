@@ -61,7 +61,7 @@ docker compose -f docker-compose.prod.yml up
 
 ```
 curl -X POST \
-    "http://0.0.0.0:8000/search_npu" \
+    "http://0.0.0.0:8000/search_npu?force_refresh=true" \
     -H "Content-Type: application/json" \
     -H "Accept: application/json" \
     -d '{
@@ -74,6 +74,7 @@ curl -X POST \
 | Parâmetro  | Tipo   | Descrição |
 |------------|--------|-------------|
 | npu       | string | Número do processo a ser extraido |
+| force_refresh| boolean| Força nova consulta ao tribunal, ignorando o cache |
 
 #### Exemplo de Resposta
 
