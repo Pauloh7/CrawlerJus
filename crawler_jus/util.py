@@ -33,9 +33,9 @@ def remove_special_characters(texto: str) -> str:
 
 
 def extract_comarca(npu: str) -> str:
-    """Função que extrai comarca do NPU
+    """Função que extrai comarca do NPU(número de processo unificado)
     Args:
-    npu (str): Npu para extrair comarca
+    npu (str): Npu(número de processo unificado) para extrair comarca
     Returns:
         comarca (str): comarca extraida
     """
@@ -48,7 +48,7 @@ def extract_comarca(npu: str) -> str:
 def build_url_processo(npu: str, comarca: str) -> str:
     """Função que cria url de acesso aos dados basicos e partes
     Args:
-    npu (str): Npu para extrair dados
+    npu (str): Npu(número de processo unificado) para extrair dados
     comarca (str): Comarca do precesso
     Returns:
         url (str): Url pronta
@@ -59,7 +59,7 @@ def build_url_processo(npu: str, comarca: str) -> str:
 def build_url_movimento(npu: str, comarca: str) -> str:
     """Função que cria url de acesso aos movimentos do processo
     Args:
-    npu (str): Npu para extrair dados
+    npu (str): Npu(número de processo unificado) para extrair dados
     comarca (str): Comarca do precesso
     Returns:
         url (str): Url pronta

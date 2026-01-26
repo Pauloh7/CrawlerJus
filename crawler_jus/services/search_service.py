@@ -20,7 +20,7 @@ class SearchService:
     async def search_npu(self, npu_original: str, force_refresh: bool = False) -> dict:
         """Seviço que serve com as regras de negocio a rota de search_npu
         Args:
-            npu_original (str): npu enviado para busca
+            npu_original (str): npu(número de processo unificado) enviado para busca
         Returns:
             results (dict): Dicionário com dados do processo
         Raises:
