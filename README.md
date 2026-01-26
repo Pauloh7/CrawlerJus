@@ -128,7 +128,7 @@ docker compose run --rm api poetry run pytest -q
 ```  
 * Os testes devem executar automaticamente e o resultado será exibido na tela
 
-# Relatório  Final
+# Relatório Final
 ## Descrição da fonte e dos principais desafios técnicos encontrados;
 ### A fonte utilizada foi a consulta processual do TJRS(Tribunal de Justiça do Estado do Rio Grande do Sul).
 ###
