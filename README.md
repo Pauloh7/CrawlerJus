@@ -4,7 +4,7 @@ Projeto desenvolvido a partir de desafio feito pela empresa Jusbrasil.
 
 # Descrição
 
-Este projeto tem como objetivo montar uma aplicação REST para extrair dados de processo do site TJRS. A aplicação estará rodando dentro de um docker que receberá as requisições, irá processá-las e entregar os resultados correspondentes.
+Este projeto simula um cenário real de scraping jurídico em produção, onde o site alvo possui autenticação dinâmica, limitação de requisições e mudanças frequentes de comportamento. A solução implementa uma arquitetura em camadas, tratamento robusto de falhas e mecanismos de cache para garantir estabilidade e performance.
 
 ## 📖 Sumário
 
