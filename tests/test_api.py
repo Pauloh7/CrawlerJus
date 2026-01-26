@@ -4,7 +4,7 @@ from httpx import AsyncClient, ASGITransport
 from api.router import app
 from crawler_jus.exceptions import TJRSRateLimit
 from crawler_jus.crawler import Crawler
-import api.router as router
+from crawler_jus.services import search_service
 from unittest.mock import AsyncMock
 
 
@@ -75,8 +75,8 @@ async def test_search_npu_rate_limit(monkeypatch):
             raise TJRSRateLimit("Limite", retry_after=30)
 
     app.state.crawler = Rate_limit()
-    monkeypatch.setattr(router, "get_cache", AsyncMock(return_value=None))
-    monkeypatch.setattr(router, "set_cache", AsyncMock(return_value=None))
+    monkeypatch.setattr(search_service, "get_cache", AsyncMock(return_value=None))
+    monkeypatch.setattr(search_service, "set_cache", AsyncMock(return_value=None))
 
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         response = await ac.post(

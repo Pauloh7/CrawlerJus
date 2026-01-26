@@ -1,4 +1,6 @@
 import re
+import requests
+from urllib.parse import urljoin
 
 
 def remove_blank_space(txt: str) -> str:
@@ -37,6 +39,7 @@ def extract_comarca(npu: str) -> str:
     Returns:
         comarca (str): comarca extraida
     """
+    # Zeros a esquerda são removidos pois a requisição exige
     comarca = str(int(npu[-4:]))
 
     return comarca
@@ -82,3 +85,26 @@ def valida_npu(npu):
         return False
 
     return int(npu[7:9]) == digito_verificador
+
+def find_main_js():
+
+    PAGE_URL = "https://www.tjrs.jus.br/novo/busca/?return=proc&client=wp_index#"
+
+    html = requests.get(PAGE_URL, timeout=20).text
+
+    scripts = re.findall(r'<script[^>]+src="([^"]+main[^"]+\.js)"', html)
+
+    if not scripts:
+        raise Exception("❌ main.js não encontrado")
+
+    bundle_path = scripts[0]
+    bundle_url = urljoin(PAGE_URL, bundle_path)
+
+    print("✅ bundle_url:", bundle_url)
+
+    js = requests.get(bundle_url, timeout=20).text
+
+    with open("bundle.js", "w", encoding="utf-8") as f:
+        f.write(js)
+
+    print("✅ bundle baixado")

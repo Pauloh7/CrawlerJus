@@ -12,7 +12,8 @@ from tenacity import (
 from curl_cffi.requests import AsyncSession
 from typing import Optional
 import random
-from .exceptions import TJRSRateLimit
+from .exceptions import TJRSRateLimit,TJRSBadResponse
+import httpx
 
 logger = logging.getLogger()
 
@@ -115,7 +116,7 @@ class Crawler:
         """
         id_num = int(auth.replace("ChaAnon_", ""))
 
-        n = (id_num % 60029) + 90778
+        n = (id_num % 60029) + 90783
 
         me = id_num * n
 
@@ -187,42 +188,102 @@ class Crawler:
 
         return authorization
 
-    @retry(wait=wait_fixed(1), stop=stop_after_attempt(5), reraise=True)
-    async def request_page(self, url: str) -> json:
+    async def request_page(self, url: str) -> str:
         """Função que executa as requisições das paginas de dados e movimentos com o challenge em cache,
         caso acesso nao seja autorizado pede para recriar o token de autorização
         Args:
-            url (str): Url da requisição
+            url (str): url da requisição
         Returns:
             resp (json): Retorna json que é retornado pelo site com as informações buscadas
         Raises:
             TJRSRateLimit: Erro de rate limit persistente
+            TJRSBadResponse: Erro inesperado
         """
+        
         max_attempts = 8
+        last_error: str | None = None
+        rate_limit_hits = 0
+        timeout = httpx.Timeout(connect=10.0, read=20.0, write=10.0, pool=10.0)
 
         for attempt in range(max_attempts):
-            auth = await self.get_auth()
-            headers = {**self.headers_consulta, "Authorization": auth}
-            resp = await self.client.get(url, headers=headers)
-            text = resp.text
+            try:
+                auth = await self.get_auth()
+                headers = {**self.headers_consulta, "Authorization": auth}
+                resp = await self.client.get(url, headers=headers, timeout=timeout)
+                text = resp.text or ""
 
-            if resp.status_code in (401, 403):
-                auth = await self.get_auth(force_refresh=True)
-                headers["Authorization"] = auth
-                resp = await self.client.get(url, headers=headers)
-                text = resp.text
+                # 401/403 -> refresh token e tenta de novo
+                if resp.status_code in (401, 403):
+                    auth = await self.get_auth(force_refresh=True)
+                    headers["Authorization"] = auth
+                    resp = await self.client.get(url, headers=headers, timeout=timeout)
+                    text = resp.text or ""
 
-            is429, msg = self.is_rate_limited(text)
-            if is429:
-                print(f"[429] {msg} | tentativa {attempt+1}/{max_attempts}")
+                # 5xx
+                if resp.status_code >= 500:
+                    last_error = f"TJRS 5xx ({resp.status_code})"
+                    await self.sleep_backoff(attempt, base=2, cap=60)
+                    continue
+
+                # 4xx (fora 401/403)
+                if resp.status_code >= 400:
+                    last_error = f"TJRS 4xx ({resp.status_code})"
+                    await self.sleep_backoff(attempt, base=2, cap=60)
+                    continue
+
+                # rate-limit por payload
+                is429, msg = self.is_rate_limited(text)
+                if is429:
+                    rate_limit_hits += 1 
+                    last_error = f"Rate limit: {msg}"
+                    print(f"[429] {msg} | tentativa {attempt+1}/{max_attempts}")
+                    await self.sleep_backoff(attempt, base=2, cap=60)
+                    continue
+
+                # resposta vazia
+                if not text.strip():
+                    last_error = "Resposta vazia"
+                    await self.sleep_backoff(attempt, base=2, cap=60)
+                    continue
+
+                # HTML
+                ctype = (resp.headers.get("Content-Type") or "").lower()
+                if "text/html" in ctype or text.lstrip().startswith("<"):
+                    last_error = "TJRS retornou HTML (não JSON)"
+                    await self.sleep_backoff(attempt, base=2, cap=60)
+                    continue
+
+                # JSON inválido/parcial
+                try:
+                    json.loads(text)
+                except Exception:
+                    last_error = "JSON inválido/parcial"
+                    await self.sleep_backoff(attempt, base=2, cap=60)
+                    continue
+
+                return text
+            except httpx.TimeoutException as e:
+                last_error = f"Timeout: {type(e).__name__}"
                 await self.sleep_backoff(attempt, base=2, cap=60)
                 continue
+            except Exception as e:
+                # erro inesperado (rede, parsing, etc.)
+                last_error = f"Exceção inesperada: {type(e).__name__}: {e}"
 
-            return text
-
-        raise TJRSRateLimit(
-            "Limite de chamadas atingido (TJRS). Tente novamente.", retry_after=30
+                if attempt < max_attempts - 1:
+                    await self.sleep_backoff(attempt, base=2, cap=60)
+                    continue
+        # pós-loop: decide qual erro final lançar
+        if rate_limit_hits == max_attempts:
+            raise TJRSRateLimit(
+                "Limite de chamadas atingido (TJRS).",
+                retry_after=30,
+            )
+        # só cai aqui depois de esgotar todas as tentativas
+        raise TJRSBadResponse(
+            f"Falha ao consultar TJRS após {max_attempts} tentativas. Último erro: {last_error}"
         )
+
 
     def extract_basic_data_partes(self, basic_data_json: str) -> dict:
         """Função que extrai dados basicos e partes do processo.
