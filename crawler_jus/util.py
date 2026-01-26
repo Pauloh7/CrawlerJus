@@ -1,6 +1,7 @@
 import re
 import requests
 from urllib.parse import urljoin
+from bs4 import BeautifulSoup
 
 
 def remove_blank_space(txt: str) -> str:
@@ -88,23 +89,32 @@ def valida_npu(npu):
 
 def find_main_js():
 
-    PAGE_URL = "https://www.tjrs.jus.br/novo/busca/?return=proc&client=wp_index#"
+    url_base = "https://consulta.tjrs.jus.br/consulta-processual/"
+    response = requests.get(url_base)
+    soup = BeautifulSoup(response.text, 'html.parser')
 
-    html = requests.get(PAGE_URL, timeout=20).text
+    # Busca todos os scripts e filtra pelo que começa com 'main.'
+    scripts = [script['src'] for script in soup.find_all('script', src=True)]
+    main_script_url = next((s for s in scripts if 'main.' in s), None)
 
-    scripts = re.findall(r'<script[^>]+src="([^"]+main[^"]+\.js)"', html)
+    if main_script_url:
+        # Se o caminho for relativo, concatena com a base
+        full_url = main_script_url if main_script_url.startswith('http') else url_base + main_script_url
+        print(f"Arquivo encontrado: {full_url}")
+        return full_url
 
-    if not scripts:
-        raise Exception("❌ main.js não encontrado")
 
-    bundle_path = scripts[0]
-    bundle_url = urljoin(PAGE_URL, bundle_path)
+def find_obfuscate_and_extract_big_int():
 
-    print("✅ bundle_url:", bundle_url)
+    main_js_url = find_main_js()
 
-    js = requests.get(bundle_url, timeout=20).text
+    response = requests.get(main_js_url)
+    js_code = response.text
+    obfuscate_code = re.search(r"obfuscation\s*\([^)]*\)\s*\{[\s\S]*?BigInt\s*\(\s*\d+\s*\)[\s\S]*?BigInt\s*\(\s*\d+\s*\)", js_code)[0]
+    big_int = re.findall(r"BigInt\s*\(\s*(\d+)\s*\)", obfuscate_code)
+    print(big_int)
+    return big_int
+    
 
-    with open("bundle.js", "w", encoding="utf-8") as f:
-        f.write(js)
-
-    print("✅ bundle baixado")
+if __name__ == "__main__":
+    find_obfuscate_and_extract_big_int()

@@ -4,22 +4,23 @@ import time
 import base64
 import hashlib
 import json
+import httpx
+from crawler_jus.util import find_obfuscate_and_extract_big_int
 from tenacity import (
     retry,
     wait_fixed,
     stop_after_attempt,
 )
 from curl_cffi.requests import AsyncSession
-from typing import Optional
+from typing import Optional, Tuple
 import random
 from api.exceptions import (
     TJRSRateLimit,
-    TJRSBaseError,
     TJRSUnauthorized,
     TJRSUpstreamError,
     TJRSNetworkError,
 )
-import httpx
+
 
 logger = logging.getLogger()
 
@@ -54,6 +55,8 @@ class Crawler:
         )
         self.url_token_request = "https://consulta-processual-service.tjrs.jus.br/api/consulta-service/public/auth/token"
         self.url_token_submit = "https://consulta-processual-service.tjrs.jus.br/api/consulta-service/public/auth/submit"
+        self._bigints: Optional[Tuple[int, int]] = None
+        self._bigints_lock = asyncio.Lock()
         self._auth_value: Optional[str] = None
         self._auth_expires_at: float = 0.0
         self._auth_lock = asyncio.Lock()
@@ -62,6 +65,26 @@ class Crawler:
     async def close(self):
         """Função que fecha o cliente de requisiçoes web"""
         await self.client.close()
+
+    async def get_big_ints(self, force_refresh: bool = False) -> tuple[int, int]:
+        """
+        Retorna os 2 inteiros usados no BigInt(numérico) do main.js.
+        Cacheia o resultado e só recalcula se force_refresh=True ou cache vazio.
+        """
+        if not force_refresh and self._bigints is not None:
+            return self._bigints
+
+        async with self._bigints_lock:
+            if not force_refresh and self._bigints is not None:
+                return self._bigints
+
+            bigints = await asyncio.to_thread(find_obfuscate_and_extract_big_int)
+
+            if not isinstance(bigints, (list, tuple)) or len(bigints) < 2:
+                raise RuntimeError("Falha ao extrair BigInt do main.js")
+
+            self._bigints = (int(bigints[0]), int(bigints[1]))
+            return self._bigints
 
     def is_rate_limited(self, text: str) -> tuple[bool, str]:
         """Função que testa se erro 429 esta no texto enviado
@@ -113,16 +136,17 @@ class Crawler:
             self._auth_expires_at = now + self._auth_ttl_seconds
             return auth
 
-    def obfuscate(self, auth: str) -> str:
+    async def obfuscate(self, auth: str) -> str:
         """Função que calcula o segredo que vai junto ao token challenge com base no mesmo para acesso ao site
         Args:
             auth (str): Token challenge resolvido
         Returns:
             final_str (str): Token challenge mais segredo em base64
         """
+        big0, big1 = await self.get_big_ints()
         id_num = int(auth.replace("ChaAnon_", ""))
 
-        n = (id_num % 60029) + 90783 #90781 
+        n = (id_num % big0) + big1
 
         me = id_num * n
 
@@ -187,9 +211,7 @@ class Crawler:
             self.url_token_submit, data=form_data
         )
         authorization_json = json.loads(authorization_response.text)
-        authorization_obfuscated = await asyncio.to_thread(
-            self.obfuscate, authorization_json["username"]
-        )
+        authorization_obfuscated = await self.obfuscate(authorization_json["username"])
         authorization = f"Basic {authorization_obfuscated}"
 
         return authorization
@@ -223,6 +245,9 @@ class Crawler:
                 if resp.status_code in (401, 403):
                     self._auth_value = None
                     self._auth_expires_at = 0
+
+                    self._bigints = None  # invalida cache
+                    await self.get_big_ints(force_refresh=True)
 
                     auth = await self.get_auth(force_refresh=True)
                     headers["Authorization"] = auth

@@ -17,7 +17,7 @@ class SearchService:
     def __init__(self, crawler: Crawler):
         self.crawler = crawler
 
-    async def search_npu(self, npu_original: str) -> dict:
+    async def search_npu(self, npu_original: str, force_refresh: bool = False) -> dict:
         """Seviço que serve com as regras de negocio a rota de search_npu
         Args:
             npu_original (str): npu enviado para busca
@@ -36,13 +36,16 @@ class SearchService:
         cache_key = f"tjrs:{comarca}:{npu}"
 
         # 3) tenta buscar na cache
-        try:
-            cached = await get_cache(cache_key)
-        except Exception:
-            cached = None
+        cached = None
+        if not force_refresh:
+            try:
+                cached = await get_cache(cache_key)
+            except Exception:
+                cached = None
 
         if cached:
             return cached
+
         
         urlconsult = build_url_processo(npu, comarca)
         urlmovimentos = build_url_movimento(npu, comarca)
@@ -77,7 +80,7 @@ class SearchService:
 
         # 6) seta resultado na cache
         try:
-            await set_cache(cache_key, results)
+            await set_cache(cache_key, results, ttl=60)
         except Exception:
             pass
 

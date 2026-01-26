@@ -15,5 +15,6 @@ async def get_cache(key: str):
     return None
 
 
-async def set_cache(key: str, value: dict):
-    await redis_client.set(key, json.dumps(value, ensure_ascii=False), ex=CACHE_TTL)
+async def set_cache(key: str, value: dict, ttl: int | None = None):
+    ex = ttl if ttl is not None else CACHE_TTL
+    await redis_client.set(key, json.dumps(value, ensure_ascii=False), ex=ex)
