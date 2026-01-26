@@ -2,7 +2,7 @@ import json
 import pytest
 from httpx import AsyncClient, ASGITransport
 from api.router import app
-from crawler_jus.exceptions import TJRSRateLimit
+from api.exceptions import TJRSRateLimit
 from crawler_jus.crawler import Crawler
 from crawler_jus.services import search_service
 from unittest.mock import AsyncMock
@@ -58,7 +58,7 @@ async def test_search_npu_success(monkeypatch):
 
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         response = await ac.post(
-            "/search_npu/", json={"npu": "5001646-66.2026.8.21.0008"}
+            "/search_npu", json={"npu": "5001646-66.2026.8.21.0008"}
         )
     assert response.status_code == 200
     body = response.json()
@@ -80,7 +80,7 @@ async def test_search_npu_rate_limit(monkeypatch):
 
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         response = await ac.post(
-            "/search_npu/", json={"npu": "5001646-66.2026.8.21.0008"}
+            "/search_npu", json={"npu": "5001646-66.2026.8.21.0008"}
         )
     assert response.status_code == 429
     assert response.headers.get("retry-after") == "30"

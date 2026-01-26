@@ -1,12 +1,9 @@
 from . import schema
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from crawler_jus.crawler import Crawler
-from fastapi.responses import JSONResponse
-from crawler_jus.exceptions import TJRSRateLimit,TJRSBadResponse
 from crawler_jus.services.search_service import SearchService
-
-
+from .error_handlers import register_exception_handlers
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -20,6 +17,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+register_exception_handlers(app)
 
 @app.post("/search_npu")
 async def search_npu(cliente: schema.ClienteInput) -> dict:
@@ -33,20 +31,5 @@ async def search_npu(cliente: schema.ClienteInput) -> dict:
         TJRSRateLimit: Erro de limite de requisiçoes
     """
     service = SearchService(app.state.crawler)
-    try:
-        return await service.search_npu(cliente.npu)
-    except TJRSRateLimit as e:
-        return JSONResponse(
-            status_code=429,
-            content={"detail": e.message},
-            headers={"Retry-After": str(e.retry_after)},
-        )
-    except TJRSBadResponse as e:
-        raise HTTPException(
-            status_code=502,
-            detail=e.message,
-        )
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(status_code=500, detail="Erro ao processar a requisição.")
+    return await service.search_npu(cliente.npu)
+    

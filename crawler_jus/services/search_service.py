@@ -3,7 +3,7 @@ from fastapi import HTTPException
 
 from crawler_jus.cache import get_cache, set_cache
 from crawler_jus.crawler import Crawler
-from crawler_jus.exceptions import TJRSRateLimit,TJRSBadResponse
+from api.exceptions import TJRSUnauthorized, TJRSRateLimit, TJRSUpstreamError, TJRSNetworkError
 from crawler_jus.util import (
     remove_special_characters,
     valida_npu,
@@ -54,14 +54,14 @@ class SearchService:
             return_exceptions=True,
         )
         
-
         for response in (basic_data_json, movimentos_json):
-            if isinstance(response, TJRSRateLimit):
+            if isinstance(response, HTTPException):
                 raise response
-            if isinstance(response, TJRSBadResponse):
+            if isinstance(response, (TJRSUnauthorized, TJRSRateLimit, TJRSUpstreamError, TJRSNetworkError)):
                 raise response
             if isinstance(response, Exception):
-                raise HTTPException(status_code=502, detail="Falha ao consultar fonte TJRS")
+                raise HTTPException(status_code=500, detail=f"Erro inesperado: {type(response).__name__}")
+        
 
         # 5) parse e montagem
         try:
