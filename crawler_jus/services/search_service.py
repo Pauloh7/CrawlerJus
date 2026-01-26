@@ -26,10 +26,8 @@ class SearchService:
         Raises:
             TJRSRateLimit: Erro de limite de requisiçoes
         """
-        # 1) normaliza e valida
+        # 1) normaliza
         npu = remove_special_characters(npu_original)
-        if not valida_npu(npu):
-            raise HTTPException(status_code=400, detail="Número do processo inválido")
 
         # 2) prepara contexto
         comarca = extract_comarca(npu)

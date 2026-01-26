@@ -78,7 +78,7 @@ class Crawler:
             if not force_refresh and self._bigints is not None:
                 return self._bigints
 
-            bigints = await asyncio.to_thread(find_obfuscate_and_extract_big_int)
+            bigints = await find_obfuscate_and_extract_big_int()
 
             if not isinstance(bigints, (list, tuple)) or len(bigints) < 2:
                 raise RuntimeError("Falha ao extrair BigInt do main.js")

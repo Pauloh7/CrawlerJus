@@ -1,6 +1,5 @@
 import re
-import requests
-from urllib.parse import urljoin
+import httpx
 from bs4 import BeautifulSoup
 
 
@@ -87,7 +86,7 @@ def valida_npu(npu):
 
     return int(npu[7:9]) == digito_verificador
 
-def find_main_js() -> str:
+async def find_main_js() -> str:
     """
     Função que descobre nome do arquivo main_js do tribunal
     Args:
@@ -96,8 +95,10 @@ def find_main_js() -> str:
     """
 
     url_base = "https://consulta.tjrs.jus.br/consulta-processual/"
-    response = requests.get(url_base)
-    soup = BeautifulSoup(response.text, 'html.parser')
+    async with httpx.AsyncClient(timeout=10) as client:
+        response = await client.get(url_base)
+        html = response.text
+    soup = BeautifulSoup(html, 'html.parser')
 
     # Busca todos os scripts e filtra pelo que começa com 'main.'
     scripts = [script['src'] for script in soup.find_all('script', src=True)]
@@ -110,7 +111,7 @@ def find_main_js() -> str:
         return full_url
 
 
-def find_obfuscate_and_extract_big_int() -> tuple:
+async def find_obfuscate_and_extract_big_int() -> tuple:
     """
     Função que encontra metodo de obfuscação do secrete e extrai numeros base do calculo
     Args:
@@ -118,9 +119,11 @@ def find_obfuscate_and_extract_big_int() -> tuple:
     big_ints (tuple): Tupla com os dois numeros do calculo
     """
 
-    main_js_url = find_main_js()
+    main_js_url = await find_main_js()
 
-    response = requests.get(main_js_url)
+    async with httpx.AsyncClient(timeout=10) as client:
+        response = await client.get(main_js_url)
+    
     js_code = response.text
     obfuscate_code = re.search(r"obfuscation\s*\([^)]*\)\s*\{[\s\S]*?BigInt\s*\(\s*\d+\s*\)[\s\S]*?BigInt\s*\(\s*\d+\s*\)", js_code)[0]
     big_ints = re.findall(r"BigInt\s*\(\s*(\d+)\s*\)", obfuscate_code)
