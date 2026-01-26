@@ -6,25 +6,31 @@ ENV PYTHONUNBUFFERED=1
 WORKDIR /crawlerjus
 ENV PYTHONPATH=/crawlerjus
 
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
-    libcurl4 \
-    libcurl4-openssl-dev \
-    openssl \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt requirements-dev.txt ./
-ARG ENV=prod
 
+ENV POETRY_VERSION=1.8.3
+RUN pip install --no-cache-dir "poetry==$POETRY_VERSION" \
+ && poetry config virtualenvs.create false
+
+
+COPY pyproject.toml poetry.lock* /crawlerjus/
+
+
+ARG ENV=prod
 RUN if [ "$ENV" = "dev" ]; then \
-        pip install --no-cache-dir -r requirements-dev.txt ; \
+      poetry install --no-interaction --no-ansi ; \
     else \
-        pip install --no-cache-dir -r requirements.txt ; \
+      poetry install --no-interaction --no-ansi --only main ; \
     fi
 
-COPY . .
+
+COPY . /crawlerjus
 
 EXPOSE 8000
 

@@ -171,7 +171,7 @@ class Crawler:
             "signature": challenge_data["signature"]
         }
 
-        json_str = json.dumps(payload, separators=(',', ':')) # remove espaços para o hash bater
+        json_str = json.dumps(payload, separators=(',', ':'))
         token_base64 = base64.b64encode(json_str.encode()).decode()
         form_data = {
             "altcha": token_base64 

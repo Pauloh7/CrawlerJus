@@ -4,6 +4,8 @@ from httpx import AsyncClient, ASGITransport
 from api.router import app
 from crawler_jus.exceptions import TJRSRateLimit
 from crawler_jus.crawler import Crawler
+import api.router as router
+from unittest.mock import AsyncMock
 
 class FakeCrawler:
     async def request_page(self, url: str) -> str:
@@ -46,6 +48,8 @@ async def test_search_npu_rate_limit(monkeypatch):
         async def request_page(self, url: str) -> str:
             raise TJRSRateLimit("Limite", retry_after=30)
     app.state.crawler = Rate_limit()
+    monkeypatch.setattr(router, "get_cache", AsyncMock(return_value=None))
+    monkeypatch.setattr(router, "set_cache", AsyncMock(return_value=None))
 
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         response = await ac.post("/search_npu/", json={"npu": "5001646-66.2026.8.21.0008"})

@@ -7,7 +7,7 @@ from crawler_jus.util import *
 from fastapi.responses import JSONResponse
 from crawler_jus.exceptions import TJRSRateLimit
 from api.cache import get_cache, set_cache
-import json
+
 
 
 @asynccontextmanager
@@ -74,6 +74,7 @@ async def search_npu(cliente: schema.ClienteInput) -> dict:
             content={"detail": e.message},
             headers={"Retry-After": str(e.retry_after)},
         )
+    
     except HTTPException:
         raise
     except Exception:
