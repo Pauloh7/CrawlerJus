@@ -16,8 +16,9 @@ Este projeto tem como objetivo montar uma aplicação REST para extrair dados de
    - [Executando o Projeto](#executando-projeto)  
 4. [Funcionalidades da API](#funcionalidades-da-api)  
    - [Buscando processo](#buscando-processo)  
-5. [Executando os Testes](#executando-os-testes)  
-6. [Autor](#autor)  
+5. [Executando os Testes](#executando-os-testes)
+6. [Relatório  Final](#relatório-final)
+7. [Autor](#autor)  
 
 # Iniciando
 
@@ -46,12 +47,13 @@ git clone git@github.com:Pauloh7/CrawlerJus.git
 * Navegar até a pasta do projeto
 * Executar o comando
 ```
-docker build -t crawler_jus .
+docker compose -f docker-compose.prod.yml build --no-cache
 ```
-* O docker irá buildar a imagem. Então rode o comando
+* O docker irá buildar a imagem, depois rode. 
 ```
-docker run --rm -p 8000:8000 crawler_jus
+docker compose -f docker-compose.prod.yml up
 ```
+* O container com api irá subir.
 ## Funcionalidades da API
 ### Buscando processo
 
@@ -118,13 +120,19 @@ Content-Type: application/json
 * Navegar até a pasta do projeto
 * Buildar o docker com as bibliotecas de teste 
 ```
-docker build -t crawler_jus --build-arg ENV=dev .
+docker compose build --no-cache
 ```
 * Para executar o docker e os testes rode
 ```
-docker run --rm -it -w /crawlerjus crawler_jus pytest -q
+docker compose run --rm api poetry run pytest -q
 ```  
 * Os testes devem executar automaticamente e o resultado será exibido na tela
-## Autor
 
+# Relatório  Final
+##Descrição da fonte e dos principais desafios técnicos encontrados;
+###A fonte utilizada foi a consulta processual do TJRS(Tribunal de Justiça do Estado do Rio Grande do Sul).
+###
+*Dos principais desafios certamente se destacam o processo de investigar o acesso ao site, para descobrir a existencia de um token de acesso, desvendar como esse token é formado e recriar o processo de formação dele. O token era formado de um challenge e um segredo gerado por codigo encontrado nos initiators da ferramenta de dev do navegador.
+*Outro desafio foi lidar com erros 429(limite de acessos permitidos). Esse problema foi contornado utilizando um processo de tentativas e espera que evita a api simplesmente retornar erro. Alem disso foi implementado um sistema de cache com redis para reduzir consultas desnecessarias caso uma busca ja tenha sido feita.
+## Autor
 [Paulo Henrique De Souza Gomes](https://www.linkedin.com/in/paulo-henrique-4a849139/)
