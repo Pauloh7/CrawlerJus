@@ -33,7 +33,9 @@ class ClienteInput(BaseModel):
         expected_digito_verificador = calc_digito_verificador(digits)
         given_digito_verificador = digits[7:9]
 
+        
         if given_digito_verificador != expected_digito_verificador:
-            raise ValueError(f"Dígito verificador inválido (esperado {expected_digito_verificador})")
+            print(f"Dígito verificador inválido (esperado {expected_digito_verificador})")
+            raise ValueError(f"O número não é um numero cnj(NPU) válido)")
 
         return format_cnj(digits)

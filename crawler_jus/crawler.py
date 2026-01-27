@@ -255,7 +255,7 @@ class Crawler:
                     text = resp.text or ""
 
                     if resp.status_code in (401, 403):
-                        raise TJRSUnauthorized("Authorization inválido mesmo após refresh")
+                        raise TJRSUnauthorized("Authorization inválido mesmo após refresh, tente novamente mais tarde.")
 
                 #  rate limit por status
                 if resp.status_code == 429:
