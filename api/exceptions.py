@@ -1,6 +1,6 @@
 from dataclasses import dataclass
-import logging
-logger = logging.getLogger(__name__)
+
+
 @dataclass
 class TJRSBaseError(Exception):
     message: str = "Erro TJRS"
