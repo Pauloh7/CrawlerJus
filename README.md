@@ -15,7 +15,8 @@ Este projeto simula um cenário real de scraping jurídico em produção, onde o
    - [Instalação](#instalação)  
    - [Executando o Projeto](#executando-projeto)  
 4. [Funcionalidades da API](#funcionalidades-da-api)  
-   - [Buscando processo](#buscando-processo)  
+   - [Buscando processo](#buscando-processo)
+   - [Verificando o Status do Serviço](#verificando-o-status-do-serviço) 
 5. [Executando os Testes](#executando-os-testes)
 6. [Relatório  Final](#relatório-final)
 7. [Autor](#autor)  
@@ -113,7 +114,27 @@ Content-Type: application/json
   ]
 }
 ```
+### Verificando o Status do Serviço
 
+#### Exemplo de Chamada
+
+```
+curl -X GET "http://0.0.0.0:8000/status" -H "Accept: application/json"
+```
+
+#### Exemplo de Resposta
+
+```
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+        "status": overall_status,
+        "api": api_status,
+        "tribunal_site": site_status,
+        "response_time_ms": response_time_ms,
+}
+```
 
 ### Executando os Testes
 #### No Windows
