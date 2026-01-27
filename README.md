@@ -129,10 +129,10 @@ HTTP/1.1 200 OK
 Content-Type: application/json
 
 {
-        "status": overall_status,
-        "api": api_status,
-        "tribunal_site": site_status,
-        "response_time_ms": response_time_ms,
+        {"status":"ok",
+         "api":"ok",
+         "tribunal_site":"ok",
+         "response_time_ms":812.19}
 }
 ```
 
