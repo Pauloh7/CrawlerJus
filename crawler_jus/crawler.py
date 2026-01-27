@@ -265,7 +265,7 @@ class Crawler:
                 if resp.status_code == 429:
                     rate_limit_hits += 1
                     last_error = "HTTP 429 Too Many Requests"
-                    await self.sleep_backoff(attempt, base=2, cap=10)
+                    await self.sleep_backoff(attempt, base=2, cap=60)
                     continue
 
                 #  HTML (bloqueio/captcha)
@@ -313,7 +313,7 @@ class Crawler:
                 logger.warning(f"Não autorizado no TJRS | url={url} | attempt={attempt+1}")
                 raise
             except TJRSUpstreamError as e:
-                logger.warning(f"Upstream 4xx TJRS sem retry | url={url} | attempt={attempt+1} | detail={e}")
+                logger.warning(f"Upstream 4xx TJRS sem retry | url={url} | attempt={attempt+1} | status={resp.status_code} | detail={e}")
                 raise
             except httpx.TimeoutException:
                 timeout_hits += 1
