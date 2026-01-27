@@ -1,4 +1,3 @@
-import logging
 import asyncio
 import time
 import base64
@@ -20,6 +19,7 @@ from api.exceptions import (
     TJRSUpstreamError,
     TJRSNetworkError,
 )
+
 
 
 logger = logging.getLogger()
@@ -225,14 +225,17 @@ class Crawler:
             resp (json): Retorna json que é retornado pelo site com as informações buscadas
         Raises:
             TJRSRateLimit: Erro de rate limit persistente
-            TJRSBadResponse: Erro inesperado
+            TJRSUnauthorized : Authorization inválido mesmo após refresh
+            TimeoutException: Timeout na requisição ao site
+            TJRSNetworkError: TJRS respondeu, mas veio quebrado (HTML, JSON inválido, 5xx persistente etc.)
+            TJRSUpstreamError: timeout/erro de rede para TJRS.
         """
         
         max_attempts = 4
         last_error: str | None = None
         rate_limit_hits = 0
         timeout = httpx.Timeout(connect=10.0, read=20.0, write=10.0, pool=10.0)
-
+        timeout_hits = 0
         for attempt in range(max_attempts):
             try:
                 auth = await self.get_auth()
@@ -261,14 +264,14 @@ class Crawler:
                 if resp.status_code == 429:
                     rate_limit_hits += 1
                     last_error = "HTTP 429 Too Many Requests"
-                    await self.sleep_backoff(attempt, base=2, cap=60)
+                    await self.sleep_backoff(attempt, base=2, cap=10)
                     continue
 
                 #  HTML (bloqueio/captcha)
                 ctype = (resp.headers.get("Content-Type") or "").lower()
                 if "text/html" in ctype or text.lstrip().startswith("<"):
                     last_error = "TJRS retornou HTML (não JSON)"
-                    await self.sleep_backoff(attempt, base=2, cap=1)
+                    await self.sleep_backoff(attempt, base=2, cap=10)
                     continue
 
                 # rate limit por payload
@@ -282,19 +285,17 @@ class Crawler:
                 # 5xx
                 if resp.status_code >= 500:
                     last_error = f"TJRS 5xx ({resp.status_code})"
-                    await self.sleep_backoff(attempt, base=2, cap=5)
+                    await self.sleep_backoff(attempt, base=2, cap=10)
                     continue
 
                 # 4xx (fora 401/403/429)
-                if resp.status_code >= 400:
-                    last_error = f"TJRS 4xx ({resp.status_code})"
-                    await self.sleep_backoff(attempt, base=2, cap=5)
-                    continue
+                if 400 <= resp.status_code < 500 and resp.status_code not in (401, 403, 429):
+                    raise TJRSUpstreamError(f"TJRS 4xx ({resp.status_code})")
 
                 # resposta vazia
                 if not text.strip():
                     last_error = "Resposta vazia"
-                    await self.sleep_backoff(attempt, base=2, cap=1)
+                    await self.sleep_backoff(attempt, base=2, cap=10)
                     continue
 
                 # JSON inválido/parcial
@@ -302,34 +303,38 @@ class Crawler:
                     json.loads(text)
                 except Exception:
                     last_error = "JSON inválido/parcial"
-                    await self.sleep_backoff(attempt, base=2, cap=1)
+                    await self.sleep_backoff(attempt, base=2, cap=10)
                     continue
 
                 return text
 
             except TJRSUnauthorized:
+                logger.warning(f"Não autorizado no TJRS | url={url} | attempt={attempt+1}")
                 raise
-
+            except TJRSUpstreamError as e:
+                logger.warning(f"Upstream 4xx TJRS sem retry | url={url} | attempt={attempt+1} | detail={e}")
+                raise
             except httpx.TimeoutException:
+                timeout_hits += 1
                 last_error = "Timeout consultando TJRS"
                 await self.sleep_backoff(attempt, base=2, cap=5)
                 continue
-
             except Exception as e:
                 last_error = f"Exceção inesperada: {type(e).__name__}: {e}"
                 await self.sleep_backoff(attempt, base=2, cap=5)
                 continue
 
-        # pós-loop
         if rate_limit_hits >= 1:
+            logger.warning(f"Rate limit TJRS | url={url} | hits={rate_limit_hits}")
             raise TJRSRateLimit("Limite de chamadas atingido (TJRS).", retry_after=30)
-
-        if last_error and "Timeout" in last_error:
-            raise TJRSNetworkError(last_error)
-
+        if timeout_hits >= 1:
+            logger.warning(f"Timeout TJRS | url={url} | hits={timeout_hits} | last_error={last_error}")
+            raise TJRSNetworkError(last_error or "Timeout consultando TJRS")
+        
+        logger.warning(f"Upstream inesperado TJRS | url={url} | last_error={last_error}")
         raise TJRSUpstreamError(
             f"Falha ao consultar TJRS após {max_attempts} tentativas. Último erro: {last_error}"
-        )
+)
 
 
     def extract_basic_data_partes(self, basic_data_json: str) -> dict:

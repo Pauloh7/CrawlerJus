@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-
+import logging
+logger = logging.getLogger(__name__)
 @dataclass
 class TJRSBaseError(Exception):
     message: str = "Erro TJRS"
@@ -22,7 +23,7 @@ class TJRSRateLimit(TJRSBaseError):
 @dataclass
 class TJRSUpstreamError(TJRSBaseError):
     """
-    TJRS respondeu, mas veio quebrado (HTML, JSON inválido, 5xx persistente etc.)
+    TJRS respondeu, mas resposta inesperada (HTML, JSON inválido, 5xx persistente etc.)
     """
     message: str = "Falha ao consultar TJRS"
 
