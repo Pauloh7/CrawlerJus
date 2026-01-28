@@ -1,7 +1,10 @@
 import re
 import httpx
+import logging
+from api.exceptions import TJRSUpstreamError
 from bs4 import BeautifulSoup
 
+logger = logging.getLogger()
 
 def remove_blank_space(txt: str) -> str:
     """Função que remove espaços de um texto
@@ -127,6 +130,9 @@ async def find_obfuscate_and_extract_big_int() -> tuple:
     js_code = response.text
     obfuscate_code = re.search(r"obfuscation\s*\([^)]*\)\s*\{[\s\S]*?BigInt\s*\(\s*\d+\s*\)[\s\S]*?BigInt\s*\(\s*\d+\s*\)", js_code)[0]
     big_ints = re.findall(r"BigInt\s*\(\s*(\d+)\s*\)", obfuscate_code)
+    if len(big_ints) < 2:
+        logger.error(f"Falha Crítica: A estrutura do JS mudou. Encontrados apenas {len(big_ints)} BigInts.")
+        raise TJRSUpstreamError("A lógica de ofuscação do Tribunal mudou e o scraper precisa de atualização manual.")
     print(big_ints)
     return big_ints
     
