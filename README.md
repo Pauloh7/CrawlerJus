@@ -216,7 +216,7 @@ docker compose run --rm api poetry run pytest -q
 * A fonte escolhida foi o sistema de consulta processual do TJRS (Tribunal de Justiça do Rio Grande do Sul).
 ### Principais desafios técnicos
 #### O maior desafio foi descobrir como o site autentica as requisições. Ele usa um token que depende de um "challenge" e de um segredo escondido no JavaScript. Precisei fazer engenharia reversa no main.js para entender o algoritmo — basicamente, dois números BigInt que mudam o hash. No meio do desenvolvimento, o site mudou a forma como esses números aparecem no código duas vezes em poucos dias. Foi frustrante, mas acabou virando oportunidade: criei uma lógica que busca esses valores dinamicamente no JS, em vez de ficar com números fixos.
-#### Outro problema recorrente foi o rate limit (HTTP 429). O TJRS limita bastante as chamadas, e quando bate, trava tudo. Tive que implementar retentativas com backoff, detectar o erro tanto pelo status quanto pelo corpo da resposta, e usar cache no Redis para não ficar martelando o servidor com a mesma consulta.
+#### Outro problema recorrente foi o rate limit (HTTP 429). O TJRS limita bastante as chamadas, e quando bate, trava tudo. Tive que implementar retentativas com backoff, detectar o erro tanto pelo status quanto pelo corpo da resposta, e usar cache no Redis para não sobrecarregar o servidor com a mesma consulta.
 ## Estratégias adotadas para realizar a coleta
 #### Fiz tudo com requisições HTTP puras (usando curl_cffi para imitar browser), sem Selenium nem Playwright — exatamente como o desafio pedia, pra ficar leve e rápido.
 #### Depois de entender o fluxo de autenticação, reproduzi a geração do token em Python: resolvi o challenge com SHA-256 e brute force limitado pelo maxnumber que o servidor manda. Pra deixar mais robusto, criei exceções específicas pra cada tipo de erro:
@@ -227,16 +227,15 @@ docker compose run --rm api poetry run pytest -q
 #### Coloquei cache no Redis pra guardar tanto o resultado da consulta quanto o token (TTL curto), evitando regenerar o segredo toda hora. Depois que a resposta chega, faço uma limpeza rápida, valido os campos principais e monto um JSON organizado.
 ## Resultados obtidos com o protótipo
 #### No final, o protótipo funciona bem estável. Consegue consultar processos do TJRS de forma automática, reproduzindo o auth do site (inclusive o challenge obfuscado), tratando erros comuns e usando cache pra não abusar do servidor.
-#### Testei com vários NPUs reais e o cache reduziu bastante as chamadas repetidas. A solução aguenta variações do site melhor do que uma versão estática, e quando bate rate limit, não trava: espera, tenta de novo e continua.
+#### Testei com vários NPUs reais e o cache reduziu bastante as chamadas repetidas. A solução suporta variações do site melhor do que uma versão estática, e quando bate rate limit, não trava: espera, tenta de novo e continua.
 ## Validações implementadas para garantir qualidade dos dados
-#### Pra não devolver lixo, adicionei várias camadas de validação:
+#### Adicionei várias camadas de validação evitando o retorno de dados indesejados:
 * Verifico se o NPU tem 20 dígitos e calculo o dígito verificador (módulo 97) pra garantir que é válido
 * Checo se a resposta veio como JSON válido e com a estrutura esperada
 * Trato respostas incompletas ou com campos nulos de forma graciosa (sem crashar)
 * No parsing, uso try/except pra capturar qualquer erro de extração e levantar exceção customizada
 #### Isso ajuda a evitar que dados errados ou parciais cheguem ao cliente.
 ## Possíveis melhorias para reduzir falhas e facilitar manutenção
-#### Tem algumas coisas que ainda daria pra melhorar pra deixar mais à prova de bala e fácil de manter:
 * Tornar a extração dos BigInts menos dependente de regex (talvez usar AST ou parser JS leve pra encontrar os valores de forma mais segura)
 * Cachear também o main.js e o token em Redis com TTL bem curto, pra múltiplas instâncias não ficarem baixando tudo de novo
 * Usar lock distribuído no Redis quando vários workers tentam regenerar o token ao mesmo tempo (evita picos de 401/429)
