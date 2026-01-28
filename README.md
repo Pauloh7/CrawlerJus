@@ -154,11 +154,11 @@ Content-Type: application/json
     },
     {
       "data": "18/12/2025",
-      "descricao": "Expedida/certificada a intimação eletrônica (EXECUTADO -  PETRÓLEO BRASILEIRO S/A - PETROBRÁS)  Prazo: 30 dias  Data final: 09/03/2026 23:59:59"
+      "descricao": "Expedida/certificada a intimação eletrônica (EXECUTADO -  PETRÓLEO BRASILEIRO S/A - PETROBRÁS)  prazo: 30 dias  Data final: 09/03/2026 23:59:59"
     },
     {
       "data": "18/12/2025",
-      "descricao": "Expedida/certificada a intimação eletrônica (EXECUTADO -  BANCO BRADESCO S.A.)  Prazo: 30 dias  Data final: 09/03/2026 23:59:59"
+      "descricao": "Expedida/certificada a intimação eletrônica (EXECUTADO -  BANCO BRADESCO S.A.)  prazo: 30 dias  Data final: 09/03/2026 23:59:59"
     },
     {
       "data": "18/12/2025",
@@ -166,7 +166,7 @@ Content-Type: application/json
     },
     {
       "data": "04/12/2025",
-      "descricao": "Conclusos para decisão/despacho"
+      "descricao": "Conclusos pra decisão/despacho"
     },
     {
       "data": "04/12/2025",
@@ -213,28 +213,35 @@ docker compose run --rm api poetry run pytest -q
 
 # Relatório Final
 ## Descrição da fonte e dos principais desafios técnicos encontrados
-* A fonte utilizada foi a consulta processual do TJRS(Tribunal de Justiça do Estado do Rio Grande do Sul).
+* A fonte escolhida foi o sistema de consulta processual do TJRS (Tribunal de Justiça do Rio Grande do Sul).
 ### Principais desafios técnicos
-* Entre os principais desafios, destaca-se o processo de investigação do mecanismo de acesso ao site, que envolveu a identificação da existência de um token de autenticação, a compreensão de como esse token é gerado e a recriação do seu processo de formação. O token era composto por um challenge e por um segredo gerado a partir de código identificado nos initiators da ferramenta de desenvolvedor do navegador. Além disso, durante o desenvolvimento, o site alterou o método de geração desse segredo em duas ocasiões, o que motivou a criação de uma automação capaz de extrair dinamicamente os números utilizados na formação do segredo.
-* Outro desafio foi lidar com erros HTTP 429 (limite de requisições permitidas). Esse problema foi contornado por meio de um mecanismo de retentativas com tempo de espera (retry com backoff), evitando que a API retornasse erros de forma imediata. Além disso, foi implementado um sistema de cache com Redis para reduzir consultas desnecessárias quando uma busca já havia sido realizada anteriormente.
+#### O maior desafio foi descobrir como o site autentica as requisições. Ele usa um token que depende de um "challenge" e de um segredo escondido no JavaScript. Precisei fazer engenharia reversa no main.js para entender o algoritmo — basicamente, dois números BigInt que mudam o hash. No meio do desenvolvimento, o site mudou a forma como esses números aparecem no código duas vezes em poucos dias. Foi frustrante, mas acabou virando oportunidade: criei uma lógica que busca esses valores dinamicamente no JS, em vez de ficar com números fixos.
+#### Outro problema recorrente foi o rate limit (HTTP 429). O TJRS limita bastante as chamadas, e quando bate, trava tudo. Tive que implementar retentativas com backoff, detectar o erro tanto pelo status quanto pelo corpo da resposta, e usar cache no Redis para não sobrecarregar o servidor com a mesma consulta.
 ## Estratégias adotadas para realizar a coleta
-* Para viabilizar a coleta dos dados, foi necessário compreender o funcionamento interno do sistema do TJRS, que utiliza mecanismos de autenticação dinâmica e proteção contra automação.
-* Inicialmente, foi identificado que as requisições exigiam um token de autenticação gerado dinamicamente e para contornar, foi realizada engenharia reversa do código JavaScript do sistema para reproduzir o algoritmo de geração do token em Python, garantindo compatibilidade com o fluxo original.
-* O sistema impõe um desafio computacional baseado em SHA-256, no qual é necessário encontrar um número inteiro. Para isso, foi implementado um algoritmo de brute force otimizado, respeitando o limite (maxnumber) fornecido pelo servidor.
-* Seguindo a recomendação do desafio, foi priorizado o uso de requisições HTTP diretas, evitando dependência de browsers (como Selenium ou Playwright).
-* Para aumentar a robustez da solução, foram implementadas estratégias de tolerância a falhas como retry com backoff exponencial,distinção entre tipos de erro (401/403, 429, 5xx, HTML inesperado, JSON inválido),renovação automática do token em caso de falha de autenticação,detecção de rate limit por status HTTP e por conteúdo da resposta. Além disso, foram definidas exceções específicas para representar falhas do upstream (TJRS), erros de rede e limitações de requisições.
-* Para reduzir o custo computacional da autenticação, foi implementado cache em Redis. Essa abordagem reduz o número de requisições ao sistema alvo e melhora a performance da API.
-* Após a obtenção da resposta, os dados são validados, normalizados, estruturados em JSON padronizado.
+#### Fiz tudo com requisições HTTP puras (usando curl_cffi para simular browser), sem Selenium nem Playwright — exatamente como o desafio pedia, para ficar leve e rápido.
+#### Depois de entender o fluxo de autenticação, reproduzi a geração do token em Python: resolvi o challenge com SHA-256 e brute force limitado pelo maxnumber que o servidor manda. para deixar mais robusto, criei exceções específicas para cada tipo de erro:
+* 401/403 → renova o token automaticamente
+* 429 → backoff + retry-after quando tem header
+* 5xx ou HTML inesperado → erro de upstream
+* JSON quebrado → erro de parsing
+#### Coloquei cache no Redis para guardar tanto o resultado da consulta quanto o token (TTL curto), evitando regenerar o segredo toda hora. Depois que a resposta chega, faço uma limpeza rápida, valido os campos principais e monto um JSON organizado.
 ## Resultados obtidos com o protótipo
-* O protótipo desenvolvido demonstrou ser capaz de realizar consultas automatizadas ao sistema do TJRS de forma eficiente e confiável. A solução implementada permitiu a obtenção dos dados processuais por meio da reprodução do mecanismo de autenticação do site, incluindo a resolução do challenge e a geração do token de acesso. Além disso, o protótipo incorporou mecanismos de tratamento de erros, como retentativas com controle de tempo de espera para lidar com limitações de requisições (HTTP 429), e um sistema de cache baseado em Redis, que reduziu significativamente o número de consultas repetidas ao servidor. Como resultado, o sistema apresentou maior estabilidade, desempenho e resiliência frente às variações do comportamento do site.
-## Validações implementadas para garantir qualidade dos dados;
-* Foram implementadas validações para garantir a qualidade e a consistência dos dados coletados. Entre essas validações, destacam-se a verificação do formato do número do processo (NPU), o tratamento de respostas inválidas ou incompletas do servidor, a validação da estrutura dos dados retornados em JSON e o controle de erros durante o processo de extração. Essas medidas contribuíram para assegurar a confiabilidade das informações obtidas pelo protótipo.
+#### No final, o protótipo funciona bem estável. Consegue consultar processos do TJRS de forma automática, reproduzindo o auth do site (inclusive o challenge obfuscado), tratando erros comuns e usando cache para não abusar do servidor.
+#### Testei com vários NPUs reais e o cache reduziu bastante as chamadas repetidas. A solução suporta variações do site melhor do que uma versão estática, e quando bate rate limit, não trava: espera, tenta de novo e continua.
+## Validações implementadas para garantir qualidade dos dados
+#### Adicionei várias camadas de validação evitando o retorno de dados indesejados:
+* Verifico se o NPU tem 20 dígitos e calculo o dígito verificador (módulo 97) para garantir que é válido
+* Checo se a resposta veio como JSON válido e com a estrutura esperada
+* Trato respostas incompletas ou com campos nulos de forma graciosa (sem crashar)
+* No parsing, uso try/except para capturar qualquer erro de extração e levantar exceção customizada
+#### Isso ajuda a evitar que dados errados ou parciais cheguem ao cliente.
 ## Possíveis melhorias para reduzir falhas e facilitar manutenção
-* Melhorar a resiliência à mudança do JavaScript do site: reduzir dependência de regex “frágeis” e adicionar validações/fallbacks na extração do algoritmo de obfuscação (por exemplo, verificar se os dois BigInt numéricos foram encontrados e registrar alerta quando o padrão mudar).
-* Cache distribuído para parâmetros do segredo e do token: além do cache do resultado da consulta (Redis), armazenar também o main.js/BigInts e o token em cache compartilhado com TTL curto. Isso reduz recomputações em múltiplos workers e diminui a quantidade de requisições ao TJRS.
-* Controle de concorrência com lock distribuído: em cenários com múltiplas instâncias, aplicar lock no Redis para evitar que vários workers tentem regenerar token/segredo ao mesmo tempo, reduzindo picos de requisições e chances de 401/429.
-* Backoff mais aderente ao upstream: priorizar o header Retry-After quando presente e manter jitter no backoff, reduzindo falhas recorrentes por rate limit.
-* Observabilidade e diagnósticos: incluir logs estruturados (com npu, comarca, tentativa, status code e origem cache/upstream) e métricas (taxa de 401/429/5xx e tempo de resposta) para facilitar detecção de mudanças no site e acelerar a manutenção.
-* Expansão e refinamento dos testes automatizados: adicionar testes específicos para cenários críticos (401 → refresh do token; 429 → backoff; retorno HTML; JSON inválido; indisponibilidade do Redis), reduzindo regressões e aumentando confiabilidade.
+* Tornar a extração dos BigInts menos dependente de regex (talvez usar AST ou parser JS leve para encontrar os valores de forma mais segura)
+* Cachear também o main.js e o token em Redis com TTL bem curto, para múltiplas instâncias não ficarem baixando tudo de novo
+* Usar lock distribuído no Redis quando vários workers tentam regenerar o token ao mesmo tempo (evita picos de 401/429)
+* Respeitar mais o Retry-After do header quando vem, e adicionar jitter no backoff para parecer mais "humano"
+* Colocar logs estruturados (com JSON) e métricas simples (quantas 429, tempo médio de resposta, hit rate do cache) para facilitar debug quando o site mudar de novo
+* Expandir os testes para cobrir mais cenários ruins: token expirado, Redis down, resposta HTML no lugar de JSON, etc.
+No geral, foi um projeto ótimo de se fazer e bem desafiador — exigiu bastante debug e paciência, mas no final gerou algo que realmente funciona em produção.
 ## Autor
 [Paulo Henrique De Souza Gomes](https://www.linkedin.com/in/paulo-henrique-4a849139/)
