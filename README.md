@@ -15,7 +15,8 @@ Este projeto simula um cenário real de scraping jurídico em produção, onde o
    - [Instalação](#instalação)  
    - [Executando o Projeto](#executando-projeto)  
 4. [Funcionalidades da API](#funcionalidades-da-api)  
-   - [Buscando processo](#buscando-processo)  
+   - [Buscando processo](#buscando-processo)
+   - [Verificando o Status do Serviço](#verificando-o-status-do-serviço) 
 5. [Executando os Testes](#executando-os-testes)
 6. [Relatório  Final](#relatório-final)
 7. [Autor](#autor)  
@@ -65,7 +66,7 @@ curl -X POST \
     -H "Content-Type: application/json" \
     -H "Accept: application/json" \
     -d '{
-         "npu": "5001646-66.2026.8.21.0008"
+         "npu": "5056077-84.2025.8.21.0008"
         }'
 ```
 
@@ -83,14 +84,24 @@ HTTP/1.1 200 OK
 Content-Type: application/json
 
 {
-  "nomeClasse": "CUMPRIMENTO DE SENTENÇA",
-  "nomeNatureza": "Compromisso, Espécies de contratos, Obrigações, DIREITO CIVIL",
+  "numeroProcesso": "5056077-84.2025.8.21.0008",
+  "numeroProcessoCNJ": "50560778420258210008",
   "classeCNJ": "CUMPRIMENTO DE SENTENÇA",
   "assuntoCNJ": "Compromisso, Espécies de contratos, Obrigações, DIREITO CIVIL",
+  "nomeClasse": "CUMPRIMENTO DE SENTENÇA",
+  "nomeNatureza": "Compromisso, Espécies de contratos, Obrigações, DIREITO CIVIL",
+  "comarca": "CANOAS",
+  "codigoComarca": "8",
+  "dataDistribuicao": "04/12/2025 09:25:41",
+  "dataPropositura": null,
+  "situacaoProcesso": "MOVIMENTO",
+  "segredoJustica": false,
+  "tipoProcesso": "EPROC",
+  "orgaoJulgador": "1º Juízo da 2ª Vara Cível da Comarca de Canoas",
   "partes": [
     {
       "descricaoTipo": "EXEQUENTE",
-      "nome": "UNIFERTIL - UNIVERSAL DE FERTILIZANTES S/A"
+      "nome": "SERAFINI ADVOGADOS"
     },
     {
       "descricaoTipo": "EXECUTADO",
@@ -101,19 +112,90 @@ Content-Type: application/json
       "nome": "PETRÓLEO BRASILEIRO S/A - PETROBRÁS"
     }
   ],
+  "processosVinculados": [
+    {
+      "numeroProcesso": "50019831220138210008",
+      "numeroFormatado": null,
+      "classe": null,
+      "assunto": null,
+      "comarca": "0008",
+      "orgaoJulgador": null,
+      "ultimaMovimentacao": null
+    }
+  ],
   "movimentos": [
     {
-      "data": "15/01/2026",
+      "data": "21/01/2026",
+      "descricao": "Publicado no DJEN - no dia 21/01/2026 - Refer. ao Evento: 4"
+    },
+    {
+      "data": "13/01/2026",
+      "descricao": "PETIÇÃO PROTOCOLADA JUNTADA - PETIÇÃO"
+    },
+    {
+      "data": "12/01/2026",
+      "descricao": "PETIÇÃO PROTOCOLADA JUNTADA - PETIÇÃO"
+    },
+    {
+      "data": "09/01/2026",
+      "descricao": "Ato cumprido pela parte ou interessado - depósito de bens/dinheiro - Confirmação de recolhimento - GUIA DE DEPÓSITO: 265002332"
+    },
+    {
+      "data": "31/12/2025",
+      "descricao": "Ato Ordinatório - Vinculado depósito judicial BACENJUD/SISBAJUD - GUIA: 255823179"
+    },
+    {
+      "data": "28/12/2025",
+      "descricao": "Confirmada a intimação eletrônica - Refer. ao Evento: 5 - Ciência Tácita"
+    },
+    {
+      "data": "19/12/2025",
+      "descricao": "Disponibilizado no DJEN - no dia 19/12/2025 - Refer. ao Evento: 4"
+    },
+    {
+      "data": "18/12/2025",
+      "descricao": "Expedida/certificada a intimação eletrônica (EXECUTADO -  PETRÓLEO BRASILEIRO S/A - PETROBRÁS)  Prazo: 30 dias  Data final: 09/03/2026 23:59:59"
+    },
+    {
+      "data": "18/12/2025",
+      "descricao": "Expedida/certificada a intimação eletrônica (EXECUTADO -  BANCO BRADESCO S.A.)  Prazo: 30 dias  Data final: 09/03/2026 23:59:59"
+    },
+    {
+      "data": "18/12/2025",
+      "descricao": "Proferido despacho de mero expediente"
+    },
+    {
+      "data": "04/12/2025",
       "descricao": "Conclusos para decisão/despacho"
     },
     {
-      "data": "15/01/2026",
+      "data": "04/12/2025",
       "descricao": "Distribuído por dependência (CAN2CIV1J) - Número: 50019831220138210008/RS"
     }
   ]
 }
 ```
+### Verificando o Status do Serviço
 
+#### Exemplo de Chamada
+
+```
+curl -X GET "http://0.0.0.0:8000/status" -H "Accept: application/json"
+```
+
+#### Exemplo de Resposta
+
+```
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+        {"status":"ok",
+         "api":"ok",
+         "tribunal_site":"ok",
+         "response_time_ms":812.19}
+}
+```
 
 ### Executando os Testes
 #### No Windows
@@ -135,7 +217,7 @@ docker compose run --rm api poetry run pytest -q
 ### Principais desafios técnicos
 * Entre os principais desafios, destaca-se o processo de investigação do mecanismo de acesso ao site, que envolveu a identificação da existência de um token de autenticação, a compreensão de como esse token é gerado e a recriação do seu processo de formação. O token era composto por um challenge e por um segredo gerado a partir de código identificado nos initiators da ferramenta de desenvolvedor do navegador. Além disso, durante o desenvolvimento, o site alterou o método de geração desse segredo em duas ocasiões, o que motivou a criação de uma automação capaz de extrair dinamicamente os números utilizados na formação do segredo.
 * Outro desafio foi lidar com erros HTTP 429 (limite de requisições permitidas). Esse problema foi contornado por meio de um mecanismo de retentativas com tempo de espera (retry com backoff), evitando que a API retornasse erros de forma imediata. Além disso, foi implementado um sistema de cache com Redis para reduzir consultas desnecessárias quando uma busca já havia sido realizada anteriormente.
-##Estratégias adotadas para realizar a coleta
+## Estratégias adotadas para realizar a coleta
 * A coleta dos dados foi relativamente simples, uma vez que o site disponibiliza as informações em formato JSON. Assim, foi necessário apenas realizar o parse das respostas e extrair os campos de interesse.
 ## Resultados obtidos com o protótipo
 * O protótipo desenvolvido demonstrou ser capaz de realizar consultas automatizadas ao sistema do TJRS de forma eficiente e confiável. A solução implementada permitiu a obtenção dos dados processuais por meio da reprodução do mecanismo de autenticação do site, incluindo a resolução do challenge e a geração do token de acesso. Além disso, o protótipo incorporou mecanismos de tratamento de erros, como retentativas com controle de tempo de espera para lidar com limitações de requisições (HTTP 429), e um sistema de cache baseado em Redis, que reduziu significativamente o número de consultas repetidas ao servidor. Como resultado, o sistema apresentou maior estabilidade, desempenho e resiliência frente às variações do comportamento do site.
