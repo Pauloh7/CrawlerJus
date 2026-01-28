@@ -20,7 +20,7 @@ from api.exceptions import (
     TJRSUpstreamError,
     TJRSNetworkError,
 )
-
+import re
 
 
 logger = logging.getLogger()
@@ -148,6 +148,7 @@ class Crawler:
         id_num = int(auth.replace("ChaAnon_", ""))
 
         n = (id_num % big0) + big1
+        
 
         me = id_num * n
 
@@ -156,6 +157,7 @@ class Crawler:
         ie = hashlib.sha256(se.encode()).hexdigest()
 
         final_str = f"{auth}:{ie}"
+    
         return base64.b64encode(final_str.encode()).decode()
 
     def solve_challenge(self, salt: str, challenge: str, maxnumber: int) -> int:
@@ -167,12 +169,12 @@ class Crawler:
         Returns:
             i (int): Número resultado do challenge
         """
-        print (challenge)
+    
         for i in range(maxnumber + 1):
             attempt = (salt + str(i)).encode('utf-8')
             result = hashlib.sha256(attempt).hexdigest()
-            print (result)
             if result == challenge:
+
                 return i
 
         raise TJRSUpstreamError(
@@ -208,7 +210,6 @@ class Crawler:
             "salt": challenge_data["salt"],
             "signature": challenge_data["signature"],
         }
-
         json_str = json.dumps(payload, separators=(",", ":"))
         token_base64 = base64.b64encode(json_str.encode()).decode()
         form_data = {"altcha": token_base64}
@@ -218,6 +219,7 @@ class Crawler:
         authorization_json = json.loads(authorization_response.text)
         authorization_obfuscated = await self.obfuscate(authorization_json["username"])
         authorization = f"Basic {authorization_obfuscated}"
+        
 
         return authorization
 

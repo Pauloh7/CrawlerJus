@@ -91,7 +91,6 @@ async def find_main_js() -> str:
     if main_script_url:
         # Se o caminho for relativo, concatena com a base
         full_url = main_script_url if main_script_url.startswith('http') else url_base + main_script_url
-        print(f"Arquivo encontrado: {full_url}")
         return full_url
 
 
@@ -104,20 +103,25 @@ async def find_obfuscate_and_extract_big_int() -> tuple:
     """
 
     main_js_url = await find_main_js()
-
     async with httpx.AsyncClient(timeout=10) as client:
         response = await client.get(main_js_url)
+   
     
     js_code = response.text
-    obfuscate_code = re.search(r"obfuscation\s*\([^)]*\)\s*\{[\s\S]*?BigInt\s*\(\s*\d+\s*\)[\s\S]*?BigInt\s*\(\s*\d+\s*\)", js_code)[0]
+
+    match =  re.search( r"obfuscation\s*\([^)]*\)\s*\{[\s\S]*?BigInt\s*\(\s*\d+\s*\)[\s\S]*?BigInt\s*\(\s*\d+\s*\)",js_code)
+    if not match:
+        raise Exception("Função obfuscation não encontrada")
+    obfuscate_code = match.group(0)
+
     big_ints = re.findall(r"BigInt\s*\(\s*(\d+)\s*\)", obfuscate_code)
     if len(big_ints) < 2:
         logger.error(f"Falha Crítica: A estrutura do JS mudou. Encontrados apenas {len(big_ints)} BigInts.")
         raise TJRSUpstreamError("A lógica de ofuscação do Tribunal mudou e o scraper precisa de atualização manual.")
-    print(big_ints)
+
     return big_ints
     
-    import re
+    
 
 def normalize_npu_to_20_digits(npu: str) -> str:
     """
