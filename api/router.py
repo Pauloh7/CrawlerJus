@@ -6,7 +6,9 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from crawler_jus.crawler import Crawler
 from crawler_jus.services.search_service import SearchService
-from .error_handlers import register_exception_handlers
+from api.exceptions import TJRSBaseError
+from api.error_handlers import tjrs_exception_handler, generic_exception_handler
+from api.enums import HealthStatus
 
 
 @asynccontextmanager
@@ -21,29 +23,36 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-register_exception_handlers(app)
+app.add_exception_handler(TJRSBaseError, tjrs_exception_handler)
+app.add_exception_handler(Exception, generic_exception_handler)
 
 TJRS_URL = "https://www.tjrs.jus.br/novo/busca/?return=proc&client=wp_index#"
 
 @app.get("/status")
+
+
+@app.get("/status")
 async def healthcheck():
-    api_status = "ok"
-    site_status = "down"
+    api_status = HealthStatus.OK
+    site_status = HealthStatus.DOWN
     response_time_ms = None
 
     try:
         start = time.time()
         async with httpx.AsyncClient(timeout=5) as client:
             resp = await client.get(TJRS_URL)
+
         elapsed = (time.time() - start) * 1000
         response_time_ms = round(elapsed, 2)
 
         if resp.status_code < 500:
-            site_status = "ok"
+            site_status = HealthStatus.OK
     except Exception:
-        site_status = "down"
+        site_status = HealthStatus.DOWN
 
-    overall_status = "ok" if site_status == "ok" else "degraded"
+    overall_status = (
+        HealthStatus.OK if site_status == HealthStatus.OK else HealthStatus.DEGRADED
+    )
 
     return {
         "status": overall_status,

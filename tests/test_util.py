@@ -1,7 +1,6 @@
 from crawler_jus.util import (
     remove_special_characters,
     extract_comarca,
-    valida_npu,
     build_url_processo,
     build_url_movimento,
 )
@@ -30,8 +29,3 @@ def test_build_urls():
     )
 
 
-def test_valida_npu_true_false():
-    ok = "50016466620268210008"
-    bad = "50016466620268210009"
-    assert valida_npu(ok) is True
-    assert valida_npu(bad) is False

@@ -1,12 +1,11 @@
 import asyncio
 from fastapi import HTTPException
-
+from crawler_jus.util import normalize_npu_to_20_digits
 from crawler_jus.cache import get_cache, set_cache
 from crawler_jus.crawler import Crawler
 from api.exceptions import TJRSUnauthorized, TJRSRateLimit, TJRSUpstreamError, TJRSNetworkError
 from crawler_jus.util import (
     remove_special_characters,
-    valida_npu,
     extract_comarca,
     build_url_processo,
     build_url_movimento,
@@ -30,8 +29,10 @@ class SearchService:
         npu = remove_special_characters(npu_original)
 
         # 2) prepara contexto
+        
+        npu_digits20 = normalize_npu_to_20_digits(npu_original)
         comarca = extract_comarca(npu)
-        cache_key = f"tjrs:{comarca}:{npu}"
+        cache_key = f"tjrs:{comarca}:{npu_digits20}"
 
         # 3) tenta buscar na cache
         cached = None
@@ -45,8 +46,8 @@ class SearchService:
             return cached
 
         
-        urlconsult = build_url_processo(npu, comarca)
-        urlmovimentos = build_url_movimento(npu, comarca)
+        urlconsult = build_url_processo(npu_digits20, comarca)
+        urlmovimentos = build_url_movimento(npu_digits20, comarca)
         
         # 4) fetch concorrente com tratamento estável
         basic_data_json, movimentos_json = await asyncio.gather(

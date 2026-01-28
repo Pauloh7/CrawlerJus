@@ -1,8 +1,11 @@
 import re
 import logging
 from pydantic import BaseModel, field_validator
+from crawler_jus.util import normalize_npu_to_20_digits
 
 logger = logging.getLogger(__name__)
+
+
 def format_cnj(digits: str) -> str:
     # npu = 20 dígitos
     return f"{digits[:7]}-{digits[7:9]}.{digits[9:13]}.{digits[13]}.{digits[14:16]}.{digits[16:20]}"
@@ -27,13 +30,11 @@ class ClienteInput(BaseModel):
         if not isinstance(npu, str):
             raise ValueError("NPU deve ser string")
 
-        digits = re.sub(r"\D+", "", npu)  # aceita com ou sem pontuação
+        digits20 = normalize_npu_to_20_digits(npu)  # aceita com ou sem pontuação
 
-        if len(digits) != 20:
-            raise ValueError("NPU deve ter 20 dígitos (com ou sem pontuação)")
 
-        expected_digito_verificador = calc_digito_verificador(digits)
-        given_digito_verificador = digits[7:9]
+        expected_digito_verificador = calc_digito_verificador(digits20)
+        given_digito_verificador = digits20[7:9]
 
         
         if given_digito_verificador != expected_digito_verificador:
@@ -41,4 +42,4 @@ class ClienteInput(BaseModel):
             f"Dígito verificador inválido no NPU. Esperado: {expected_digito_verificador}")
             raise ValueError(f"O número não é um numero cnj(NPU) válido)")
 
-        return format_cnj(digits)
+        return format_cnj(digits20)

@@ -1,39 +1,38 @@
-from fastapi import FastAPI, Request
+from fastapi import Request
 from fastapi.responses import JSONResponse
+import logging
 
-from .exceptions import (
-    TJRSUnauthorized,
-    TJRSRateLimit,
-    TJRSUpstreamError,
-    TJRSNetworkError,
-)
+from api.exceptions import TJRSBaseError
 
-def register_exception_handlers(app: FastAPI) -> None:
-    @app.exception_handler(TJRSUnauthorized)
-    async def handle_tjrs_unauthorized(request: Request, exc: TJRSUnauthorized):
-        return JSONResponse(
-            status_code=401,
-            content={"detail": exc.message},
-        )
+logger = logging.getLogger(__name__)
 
-    @app.exception_handler(TJRSRateLimit)
-    async def handle_tjrs_rate_limit(request: Request, exc: TJRSRateLimit):
-        return JSONResponse(
-            status_code=429,
-            content={"detail": exc.message},
-            headers={"Retry-After": str(exc.retry_after)},
-        )
 
-    @app.exception_handler(TJRSNetworkError)
-    async def handle_tjrs_network(request: Request, exc: TJRSNetworkError):
-        return JSONResponse(
-            status_code=504, 
-            content={"detail": exc.message},
-        )
+async def tjrs_exception_handler(request: Request, exc: TJRSBaseError):
+    logger.warning(
+        f"TJRS error | path={request.url.path} | status={exc.status_code} | detail={exc.message}"
+    )
 
-    @app.exception_handler(TJRSUpstreamError)
-    async def handle_tjrs_upstream(request: Request, exc: TJRSUpstreamError):
-        return JSONResponse(
-            status_code=502,
-            content={"detail": exc.message},
-        )
+    headers = {}
+    if hasattr(exc, "retry_after"):
+        headers["Retry-After"] = str(exc.retry_after)
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": "TJRS_ERROR",
+            "detail": exc.message,
+        },
+        headers=headers,
+    )
+
+
+async def generic_exception_handler(request: Request, exc: Exception):
+    logger.exception(f"Unhandled error | path={request.url.path} | error={exc}")
+
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "INTERNAL_SERVER_ERROR",
+            "detail": "Erro interno inesperado",
+        },
+    )

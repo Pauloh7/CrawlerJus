@@ -82,7 +82,7 @@ class Crawler:
             bigints = await find_obfuscate_and_extract_big_int()
 
             if not isinstance(bigints, (list, tuple)) or len(bigints) < 2:
-                raise RuntimeError("Falha ao extrair BigInt do main.js")
+                raise TJRSUpstreamError("Falha ao extrair BigInt do main.js")
 
             self._bigints = (int(bigints[0]), int(bigints[1]))
             return self._bigints
@@ -158,7 +158,7 @@ class Crawler:
         final_str = f"{auth}:{ie}"
         return base64.b64encode(final_str.encode()).decode()
 
-    def solve_challenge(self, salt: int, challenge: int, maxnumber: int) -> int:
+    def solve_challenge(self, salt: str, challenge: str, maxnumber: int) -> int:
         """Função que calcula o token challenge
         Args:
             salt (int): Parte do calculo do desafio
@@ -167,13 +167,17 @@ class Crawler:
         Returns:
             i (int): Número resultado do challenge
         """
+        print (challenge)
         for i in range(maxnumber + 1):
-            attempt = f"{salt}{i}"
-            result = hashlib.sha256(attempt.encode()).hexdigest()
-
+            attempt = (salt + str(i)).encode('utf-8')
+            result = hashlib.sha256(attempt).hexdigest()
+            print (result)
             if result == challenge:
                 return i
-        return None
+
+        raise TJRSUpstreamError(
+        f"Não foi possível resolver o challenge (maxnumber={maxnumber})"
+        )
 
     @retry(wait=wait_fixed(1), stop=stop_after_attempt(5), reraise=True)
     async def create_authorization(self) -> str:
@@ -228,8 +232,8 @@ class Crawler:
             TJRSRateLimit: Erro de rate limit persistente
             TJRSUnauthorized : Authorization inválido mesmo após refresh
             TimeoutException: Timeout na requisição ao site
-            TJRSNetworkError: TJRS respondeu, mas veio quebrado (HTML, JSON inválido, 5xx persistente etc.)
-            TJRSUpstreamError: timeout/erro de rede para TJRS.
+            TJRSNetworkError: timeout/erro de rede para TJRS
+            TJRSUpstreamError: TJRS respondeu, mas veio quebrado (HTML, JSON inválido, 5xx persistente etc.)
         """
         
         max_attempts = 4
@@ -237,6 +241,7 @@ class Crawler:
         rate_limit_hits = 0
         timeout = httpx.Timeout(connect=10.0, read=20.0, write=10.0, pool=10.0)
         timeout_hits = 0
+        resp = None 
         for attempt in range(max_attempts):
             try:
                 auth = await self.get_auth()
@@ -291,7 +296,9 @@ class Crawler:
 
                 # 4xx (fora 401/403/429)
                 if 400 <= resp.status_code < 500 and resp.status_code not in (401, 403, 429):
-                    raise TJRSUpstreamError(f"TJRS 4xx ({resp.status_code})")
+                        raise TJRSUpstreamError(
+                            message=f"TJRS retornou erro {resp.status_code}"
+                        )
 
                 # resposta vazia
                 if not text.strip():
@@ -313,7 +320,8 @@ class Crawler:
                 logger.warning(f"Não autorizado no TJRS | url={url} | attempt={attempt+1}")
                 raise
             except TJRSUpstreamError as e:
-                logger.warning(f"Upstream 4xx TJRS sem retry | url={url} | attempt={attempt+1} | status={resp.status_code} | detail={e}")
+                status = getattr(resp, "status_code", None)
+                logger.warning(f"Upstream 4xx TJRS | status={status} | detail={e}")
                 raise
             except httpx.TimeoutException:
                 timeout_hits += 1

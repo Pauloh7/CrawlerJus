@@ -70,25 +70,6 @@ def build_url_movimento(npu: str, comarca: str) -> str:
     return f"https://consulta-processual-service.tjrs.jus.br/api/consulta-service/v1/consultaMovimentacao?numeroProcesso={npu}&codComarca={comarca}"
 
 
-def valida_npu(npu):
-    """
-    Função para validar o número do processo judicial utilizando o algoritmo Módulo 97, Base 10, ISO 7064
-    Args:
-    npu (str): Numero a ser validado
-    Returns:
-    retorna True se o numero é valido e False se esse é invalido
-    """
-
-    npu = npu.replace(".", "").replace("-", "")
-    npu_sem_digito_verificador = npu[:7] + npu[9:]
-
-    try:
-        digito_verificador = 98 - ((int(npu_sem_digito_verificador) * 100) % 97)
-    except:
-        return False
-
-    return int(npu[7:9]) == digito_verificador
-
 async def find_main_js() -> str:
     """
     Função que descobre nome do arquivo main_js do tribunal
@@ -136,6 +117,35 @@ async def find_obfuscate_and_extract_big_int() -> tuple:
     print(big_ints)
     return big_ints
     
+    import re
 
-if __name__ == "__main__":
-    find_obfuscate_and_extract_big_int()
+def normalize_npu_to_20_digits(npu: str) -> str:
+    """
+    Aceita NPU com ou sem pontuação e com sequencial sem zeros à esquerda.
+    Retorna string com 20 dígitos (padrão CNJ).
+    """
+    if not isinstance(npu, str):
+        raise ValueError("NPU deve ser string")
+
+    digits = re.sub(r"\D+", "", npu)
+
+    # Se já veio completo, ok
+    if len(digits) == 20:
+        return digits
+
+    # Se veio no formato pontuado, tentamos extrair os blocos
+    m = re.match(
+        r"^\s*(\d{1,7})-(\d{2})\.(\d{4})\.(\d)\.(\d{2})\.(\d{4})\s*$",
+        npu
+    )
+    if m:
+        seq, dv, ano, j, tr, oooo = m.groups()
+        seq = seq.zfill(7)  # ✅ completa com zeros à esquerda
+        return f"{seq}{dv}{ano}{j}{tr}{oooo}"
+
+    # Caso venha só dígitos mas faltando zeros no começo do sequencial
+    # (ex: 19 dígitos ou menos) → completa à esquerda até 20
+    if len(digits) < 20:
+        return digits.zfill(20)
+
+    raise ValueError("NPU inválido (tamanho inesperado)")
