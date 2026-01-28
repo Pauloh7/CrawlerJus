@@ -236,7 +236,7 @@ docker compose run --rm api poetry run pytest -q
 * No parsing, uso try/except pra capturar qualquer erro de extração e levantar exceção customizada
 #### Isso ajuda a evitar que dados errados ou parciais cheguem ao cliente.
 ## Possíveis melhorias para reduzir falhas e facilitar manutenção
-####Tem algumas coisas que ainda daria pra melhorar pra deixar mais à prova de bala e fácil de manter:
+#### Tem algumas coisas que ainda daria pra melhorar pra deixar mais à prova de bala e fácil de manter:
 * Tornar a extração dos BigInts menos dependente de regex (talvez usar AST ou parser JS leve pra encontrar os valores de forma mais segura)
 * Cachear também o main.js e o token em Redis com TTL bem curto, pra múltiplas instâncias não ficarem baixando tudo de novo
 * Usar lock distribuído no Redis quando vários workers tentam regenerar o token ao mesmo tempo (evita picos de 401/429)
