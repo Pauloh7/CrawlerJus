@@ -219,11 +219,10 @@ docker compose run --rm api poetry run pytest -q
 * Outro desafio foi lidar com erros HTTP 429 (limite de requisições permitidas). Esse problema foi contornado por meio de um mecanismo de retentativas com tempo de espera (retry com backoff), evitando que a API retornasse erros de forma imediata. Além disso, foi implementado um sistema de cache com Redis para reduzir consultas desnecessárias quando uma busca já havia sido realizada anteriormente.
 ## Estratégias adotadas para realizar a coleta
 * Para viabilizar a coleta dos dados, foi necessário compreender o funcionamento interno do sistema do TJRS, que utiliza mecanismos de autenticação dinâmica e proteção contra automação.
-** teste
-* Inicialmente, foi identificado que as requisições exigiam um token de autenticação gerado dinamicamente e para sobrepujar, foi realizada engenharia reversa do código JavaScript do sistema para reproduzir o algoritmo de geração do token em Python, garantindo compatibilidade com o fluxo original.
+* Inicialmente, foi identificado que as requisições exigiam um token de autenticação gerado dinamicamente e para contornar, foi realizada engenharia reversa do código JavaScript do sistema para reproduzir o algoritmo de geração do token em Python, garantindo compatibilidade com o fluxo original.
 * O sistema impõe um desafio computacional baseado em SHA-256, no qual é necessário encontrar um número inteiro. Para isso, foi implementado um algoritmo de brute force otimizado, respeitando o limite (maxnumber) fornecido pelo servidor.
 * Seguindo a recomendação do desafio, foi priorizado o uso de requisições HTTP diretas, evitando dependência de browsers (como Selenium ou Playwright).
-* Para aumentar a robustez da solução, foram implementadas estratégias de tolerância a falhas. Além disso, foram definidas exceções específicas para representar falhas do upstream (TJRS), erros de rede e limitações de requisições.
+* Para aumentar a robustez da solução, foram implementadas estratégias de tolerância a falhas como retry com backoff exponencial,distinção entre tipos de erro (401/403, 429, 5xx, HTML inesperado, JSON inválido),renovação automática do token em caso de falha de autenticação,detecção de rate limit por status HTTP e por conteúdo da resposta. Além disso, foram definidas exceções específicas para representar falhas do upstream (TJRS), erros de rede e limitações de requisições.
 * Para reduzir o custo computacional da autenticação, foi implementado cache em Redis. Essa abordagem reduz o número de requisições ao sistema alvo e melhora a performance da API.
 * Após a obtenção da resposta, os dados são validados, normalizados, estruturados em JSON padronizado.
 ## Resultados obtidos com o protótipo
