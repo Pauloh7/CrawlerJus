@@ -216,6 +216,7 @@ docker compose run --rm api poetry run pytest -q
 * A fonte escolhida foi o sistema de consulta processual do TJRS (Tribunal de Justiça do Rio Grande do Sul).
 ### Principais desafios técnicos
 O maior desafio foi descobrir como o site autentica as requisições. Ele usa um token que depende de um "challenge" e de um segredo escondido no JavaScript. Precisei fazer engenharia reversa no main.js para entender o algoritmo — basicamente, dois números BigInt que mudam o hash. No meio do desenvolvimento, o site mudou a forma como esses números aparecem no código duas vezes em poucos dias. Foi frustrante, mas acabou virando oportunidade: criei uma lógica que busca esses valores dinamicamente no JS, em vez de ficar com números fixos.
+
 Outro problema recorrente foi o rate limit (HTTP 429). O TJRS limita bastante as chamadas, e quando bate, trava tudo. Tive que implementar retentativas com backoff, detectar o erro tanto pelo status quanto pelo corpo da resposta, e usar cache no Redis para não sobrecarregar o servidor com a mesma consulta.
 ## Estratégias adotadas para realizar a coleta
 Fiz tudo com requisições HTTP puras (usando curl_cffi para simular browser), sem Selenium nem Playwright — exatamente como o desafio pedia, para ficar leve e rápido.
