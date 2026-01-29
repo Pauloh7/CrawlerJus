@@ -220,14 +220,17 @@ O maior desafio foi descobrir como o site autentica as requisições. Ele usa um
 Outro problema recorrente foi o rate limit (HTTP 429). O TJRS limita bastante as chamadas, e quando bate, trava tudo. Tive que implementar retentativas com backoff, detectar o erro tanto pelo status quanto pelo corpo da resposta, e usar cache no Redis para não sobrecarregar o servidor com a mesma consulta.
 ## Estratégias adotadas para realizar a coleta
 Fiz tudo com requisições HTTP puras (usando curl_cffi para simular browser), sem Selenium nem Playwright — exatamente como o desafio pedia, para ficar leve e rápido.
-#### Depois de entender o fluxo de autenticação, reproduzi a geração do token em Python: resolvi o challenge com SHA-256 e brute force limitado pelo maxnumber que o servidor manda. para deixar mais robusto, criei exceções específicas para cada tipo de erro:
+
+Depois de entender o fluxo de autenticação, reproduzi a geração do token em Python: resolvi o challenge com SHA-256 e brute force limitado pelo maxnumber que o servidor manda. para deixar mais robusto, criei exceções específicas para cada tipo de erro:
 * 401/403 → renova o token automaticamente
 * 429 → backoff + retry-after quando tem header
 * 5xx ou HTML inesperado → erro de upstream
 * JSON quebrado → erro de parsing
+
 Coloquei cache no Redis para guardar tanto o resultado da consulta quanto o token (TTL curto), evitando regenerar o segredo toda hora. Depois que a resposta chega, faço uma limpeza rápida, valido os campos principais e monto um JSON organizado.
 ## Resultados obtidos com o protótipo
 No final, o protótipo funciona bem estável. Consegue consultar processos do TJRS de forma automática, reproduzindo o auth do site (inclusive o challenge obfuscado), tratando erros comuns e usando cache para não abusar do servidor.
+
 Testei com vários NPUs reais e o cache reduziu bastante as chamadas repetidas. A solução suporta variações do site melhor do que uma versão estática, e quando bate rate limit, não trava: espera, tenta de novo e continua.
 ## Validações implementadas para garantir qualidade dos dados
 Adicionei várias camadas de validação evitando o retorno de dados indesejados:
