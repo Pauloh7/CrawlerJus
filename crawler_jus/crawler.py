@@ -145,6 +145,7 @@ class Crawler:
             final_str (str): Token challenge mais segredo em base64
         """
         big0, big1 = await self.get_big_ints()
+        
         id_num = int(auth.replace("ChaAnon_", ""))
 
         n = (id_num % big0) + big1

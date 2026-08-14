@@ -43,3 +43,17 @@ class ClienteInput(BaseModel):
             raise ValueError(f"O número não é um numero cnj(NPU) válido)")
 
         return format_cnj(digits20)
+
+class AskIAInput(BaseModel):
+    thread_id: str
+    question: str
+
+class AskIAResponse(BaseModel):
+    answer: str
+    thread_id: str
+
+    npu: str | None = None
+    llm_calls: int | None = None
+    tool_calls: int | None = None
+    external_calls: int | None = None
+    cache_hits: int | None = None

@@ -9,16 +9,25 @@ from crawler_jus.services.search_service import SearchService
 from api.exceptions import TJRSBaseError
 from api.error_handlers import tjrs_exception_handler, generic_exception_handler
 from api.enums import HealthStatus
-
+from legal_ai.agent import create_legal_agent
+from legal_ai.graph import create_legal_graph
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     crawler = Crawler()
+    service = SearchService(crawler)
+
+    legal_graph = create_legal_graph(service)
+
     app.state.crawler = crawler
+    app.state.search_service = service
+    app.state.legal_graph = legal_graph
 
-    yield
+    try:
+        yield
 
-    await crawler.close()
+    finally:
+        await crawler.close()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -70,6 +79,57 @@ async def search_npu(cliente: schema.ClienteInput, force_refresh: bool = Query(F
     Returns:
         processo_info (dict): Dicionário com dados do processo
     """
-    service = SearchService(app.state.crawler)
-    return await service.search_npu(cliente.npu, force_refresh=force_refresh)
+    return await app.state.search_service.search_npu(cliente.npu, force_refresh=force_refresh)
+
+@app.post(
+    "/ask_ia",
+    response_model=schema.AskIAResponse,
+)
+async def ask_ia(
+    data: schema.AskIAInput,
+):
+    graph = app.state.legal_graph
+
+    config = {
+        "configurable": {
+            "thread_id": data.thread_id
+        }
+    }
+
+    result = await graph.ainvoke(
+        {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": data.question,
+                }
+            ]
+        },
+        config=config,
+    )
+
+    answer = result["messages"][-1].content
+
+    return {
+    "answer": answer,
+    "thread_id": data.thread_id,
+
+    "npu": result.get("npu"),
+
+    "llm_calls": result.get(
+        "llm_calls"
+    ),
+
+    "tool_calls": result.get(
+        "tool_calls_count"
+    ),
+
+    "external_calls": result.get(
+        "external_calls_count"
+    ),
+
+    "cache_hits": result.get(
+        "cache_hits"
+    ),
+    }
     
