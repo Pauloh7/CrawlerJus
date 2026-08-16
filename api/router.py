@@ -135,10 +135,6 @@ async def search_npu(
     "/ask_ia",
     response_model=schema.AskIAResponse,
 )
-@app.post(
-    "/ask_ia",
-    response_model=schema.AskIAResponse,
-)
 async def ask_ia(
     data: schema.AskIAInput,
 ):
