@@ -13,7 +13,7 @@ RUN apt-get update \
         gcc \
     && rm -rf /var/lib/apt/lists/*
 
-ENV POETRY_VERSION=1.8.3
+ENV POETRY_VERSION=2.4.0
 
 RUN pip install --no-cache-dir "poetry==$POETRY_VERSION" \
     && poetry config virtualenvs.create false
