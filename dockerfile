@@ -28,7 +28,12 @@ RUN if [ "$ENV" = "dev" ]; then \
         poetry install --no-interaction --no-ansi --only main; \
     fi
 
-COPY . .
+RUN addgroup --system app \
+    && adduser --system --ingroup app app
+
+COPY --chown=app:app . .
+
+USER app
 
 EXPOSE 8000
 
