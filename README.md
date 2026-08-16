@@ -367,10 +367,19 @@ O header `X-Request-ID` também é retornado ao cliente.
 - Docker Compose
 - Git
 
+O `docker-compose.yml` atual está configurado para executar o Ollama com **GPU NVIDIA**. Para subir o ambiente exatamente como está versionado, também é necessário:
+
+- GPU NVIDIA compatível;
+- driver NVIDIA atualizado;
+- suporte de GPU no Docker;
+- no Windows, Docker Desktop utilizando backend WSL2.
+
 Para desenvolvimento local sem Docker também é utilizado:
 
 - Python 3.12
 - Poetry
+
+> O Ollama também suporta execução em CPU, mas o Compose atual reserva explicitamente uma GPU NVIDIA. Para executar o projeto sem GPU, remova o bloco de reserva de GPU do serviço `ollama` antes de subir o ambiente.
 
 ### Clonando o repositório
 
@@ -436,9 +445,7 @@ docker compose -f docker-compose.prod.yml up -d
 
 ## GPU para o Ollama
 
-O Ollama pode executar apenas em CPU, porém o uso de GPU reduz significativamente a latência do modelo.
-
-O Compose pode reservar uma GPU NVIDIA para o serviço:
+O `docker-compose.yml` atual reserva explicitamente uma **GPU NVIDIA** para o serviço `ollama`:
 
 ```yaml
 deploy:
@@ -451,20 +458,54 @@ deploy:
             - gpu
 ```
 
-Para verificar onde o modelo está sendo executado:
+Portanto, para executar o ambiente de desenvolvimento **sem alterações no Compose**, o Docker precisa conseguir acessar uma GPU NVIDIA.
+
+No Windows, isso normalmente envolve:
+
+- driver NVIDIA atualizado;
+- WSL2 atualizado;
+- Docker Desktop utilizando o backend WSL2;
+- suporte de GPU habilitado no Docker.
+
+Uma forma de validar o acesso à GPU pelo Docker é:
+
+```bash
+docker run --rm --gpus all ubuntu nvidia-smi
+```
+
+Depois que o Ollama estiver carregando o modelo, é possível verificar o backend utilizado com:
 
 ```bash
 docker compose exec ollama ollama ps
 ```
 
-Exemplo:
+Exemplo com aceleração por GPU:
 
 ```text
 NAME        SIZE      PROCESSOR
 qwen3:8b    5.6 GB    100% GPU
 ```
 
-A GPU é opcional. Caso não esteja disponível, o Ollama pode executar utilizando CPU.
+### Execução sem GPU
+
+O Ollama suporta execução em CPU, mas o Compose versionado neste projeto **não está configurado como CPU-only**.
+
+Para executar sem GPU NVIDIA, remova do serviço `ollama` o bloco:
+
+```yaml
+deploy:
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: all
+          capabilities:
+            - gpu
+```
+
+Depois disso, o Ollama poderá iniciar utilizando CPU, com latência de inferência significativamente maior.
+
+> A configuração de GPU não é necessária para o crawler do TJRS, Redis, PostgreSQL ou FastAPI. Ela é utilizada apenas para acelerar o modelo local executado pelo Ollama.
 
 ---
 
