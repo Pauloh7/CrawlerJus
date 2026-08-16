@@ -2,7 +2,6 @@ import os
 import uuid
 
 import pytest
-
 from dotenv import load_dotenv
 from langchain.messages import AIMessage
 from langchain_core.runnables import RunnableLambda

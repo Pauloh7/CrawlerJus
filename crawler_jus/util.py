@@ -1,8 +1,10 @@
-import re
-import httpx
 import logging
-from api.exceptions import TJRSUpstreamError
+import re
+
+import httpx
 from bs4 import BeautifulSoup
+
+from api.exceptions import TJRSUpstreamError
 
 logger = logging.getLogger()
 

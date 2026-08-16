@@ -1,25 +1,22 @@
 import os
 
 from langchain_ollama import ChatOllama
-
 from langgraph.graph import (
-    StateGraph,
     START,
+    StateGraph,
 )
 
 from crawler_jus.services.search_service import (
     SearchService,
 )
-
-from legal_ai.state import AgentState
-from legal_ai.tools import create_process_tools
-
 from legal_ai.nodes import (
     call_model,
+    prepare_context,
     search_process,
     should_continue,
-    prepare_context,
 )
+from legal_ai.state import AgentState
+from legal_ai.tools import create_process_tools
 
 
 async def prepare_context_node(

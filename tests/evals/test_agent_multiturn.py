@@ -1,13 +1,10 @@
 import pytest
-
 from langgraph.checkpoint.memory import InMemorySaver
 
 from crawler_jus.crawler import Crawler
 from crawler_jus.services.search_service import SearchService
 from legal_ai.graph import create_legal_graph
-
 from tests.evals.cases import NPU
-
 
 MULTITURN_CASES = [
     {

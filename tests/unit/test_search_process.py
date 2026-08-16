@@ -1,11 +1,10 @@
 import pytest
-
-from api.exceptions import TJRSUpstreamError
 from langchain.messages import (
     AIMessage,
     HumanMessage,
 )
 
+from api.exceptions import TJRSUpstreamError
 from legal_ai.nodes import search_process
 
 NPU = "5001646-66.2026.8.21.0008"

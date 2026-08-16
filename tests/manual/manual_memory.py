@@ -1,8 +1,8 @@
 import asyncio
 
-from legal_ai.graph import create_legal_graph
 from crawler_jus.crawler import Crawler
 from crawler_jus.services.search_service import SearchService
+from legal_ai.graph import create_legal_graph
 
 
 async def main():

@@ -1,4 +1,5 @@
 import json
+
 from crawler_jus.crawler import Crawler
 
 

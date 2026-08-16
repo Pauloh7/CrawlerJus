@@ -1,10 +1,9 @@
 import pytest
-
 from langchain_core.messages import ToolMessage
 
-from legal_ai.legacy.simple_agent import create_legal_agent
 from crawler_jus.crawler import Crawler
 from crawler_jus.services.search_service import SearchService
+from legal_ai.legacy.simple_agent import create_legal_agent
 
 
 @pytest.mark.asyncio

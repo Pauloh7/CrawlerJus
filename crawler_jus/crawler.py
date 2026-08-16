@@ -1,26 +1,27 @@
 import asyncio
-import time
-import logging
 import base64
 import hashlib
 import json
+import logging
+import random
+import time
+from typing import Optional, Tuple
+
 import httpx
-from crawler_jus.util import find_obfuscate_and_extract_big_int
+from curl_cffi.requests import AsyncSession
 from tenacity import (
     retry,
-    wait_fixed,
     stop_after_attempt,
+    wait_fixed,
 )
-from curl_cffi.requests import AsyncSession
-from typing import Optional, Tuple
-import random
+
 from api.exceptions import (
+    TJRSNetworkError,
     TJRSRateLimit,
     TJRSUnauthorized,
     TJRSUpstreamError,
-    TJRSNetworkError,
 )
-import re
+from crawler_jus.util import find_obfuscate_and_extract_big_int
 
 logger = logging.getLogger()
 

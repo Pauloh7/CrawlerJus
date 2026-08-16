@@ -1,10 +1,11 @@
-import re
 import logging
+
 from pydantic import BaseModel, field_validator
+
 from crawler_jus.util import (
-    normalize_npu_to_20_digits,
     calc_digito_verificador,
     format_cnj,
+    normalize_npu_to_20_digits,
 )
 
 logger = logging.getLogger(__name__)
@@ -44,7 +45,7 @@ class ClienteInput(BaseModel):
             logger.warning(
                 f"Dígito verificador inválido no NPU. Esperado: {expected_digito_verificador}"
             )
-            raise ValueError(f"O número não é um numero cnj(NPU) válido)")
+            raise ValueError("O número não é um numero cnj(NPU) válido)")
 
         return format_cnj(digits20)
 

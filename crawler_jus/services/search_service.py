@@ -2,21 +2,18 @@ import asyncio
 import logging
 
 from api.exceptions import (
-    TJRSUnauthorized,
-    TJRSRateLimit,
-    TJRSUpstreamError,
+    ProcessNotFoundError,
     TJRSNetworkError,
     TJRSParseError,
-    ProcessNotFoundError,
+    TJRSRateLimit,
+    TJRSUnauthorized,
+    TJRSUpstreamError,
 )
-
 from crawler_jus.cache import (
     get_cache,
     set_cache,
 )
-
 from crawler_jus.crawler import Crawler
-
 from crawler_jus.util import (
     build_url_movimento,
     build_url_processo,

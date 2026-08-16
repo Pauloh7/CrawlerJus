@@ -1,9 +1,7 @@
 import pytest
-
 from langgraph.checkpoint.memory import InMemorySaver
 
 from legal_ai.graph import create_legal_graph
-
 
 NPU_A = "5001646-66.2026.8.21.0008"
 NPU_B = "5001983-12.2013.8.21.0008"

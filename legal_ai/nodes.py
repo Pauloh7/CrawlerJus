@@ -5,7 +5,6 @@ from langgraph.graph import END
 
 from api.exceptions import TJRSBaseError
 from crawler_jus.util import valida_npu
-
 from legal_ai.state import AgentState
 from legal_ai.util import (
     classify_question,

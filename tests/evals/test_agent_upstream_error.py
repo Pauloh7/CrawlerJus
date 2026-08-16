@@ -1,10 +1,8 @@
 import pytest
-
 from langgraph.checkpoint.memory import InMemorySaver
 
 from api.exceptions import TJRSUpstreamError
 from legal_ai.graph import create_legal_graph
-
 
 NPU = "5001646-66.2026.8.21.0008"
 

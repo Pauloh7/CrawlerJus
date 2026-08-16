@@ -1,5 +1,4 @@
 import pytest
-
 from langgraph.checkpoint.memory import InMemorySaver
 
 from crawler_jus.crawler import Crawler

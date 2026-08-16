@@ -5,7 +5,6 @@ from fastapi.responses import JSONResponse
 
 from api.exceptions import TJRSBaseError
 
-
 logger = logging.getLogger(__name__)
 
 

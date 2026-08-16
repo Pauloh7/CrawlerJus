@@ -1,8 +1,10 @@
 import asyncio
+
 from langchain_core.messages import ToolMessage
-from legal_ai.legacy.simple_agent import create_legal_agent
+
 from crawler_jus.crawler import Crawler
 from crawler_jus.services.search_service import SearchService
+from legal_ai.legacy.simple_agent import create_legal_agent
 
 TESTES = [
     "Quais foram as últimas movimentações do processo " "5001646-66.2026.8.21.0008?",

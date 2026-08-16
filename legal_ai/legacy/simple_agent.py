@@ -1,8 +1,8 @@
 from langchain.agents import create_agent
 from langchain_ollama import ChatOllama
 
-from legal_ai.tools import create_process_tools
 from crawler_jus.services.search_service import SearchService
+from legal_ai.tools import create_process_tools
 
 SYSTEM_PROMPT = """
 Você é um assistente especializado em processos judiciais brasileiros.

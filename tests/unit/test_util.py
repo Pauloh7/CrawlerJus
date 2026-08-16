@@ -1,8 +1,8 @@
 from crawler_jus.util import (
-    remove_special_characters,
-    extract_comarca,
-    build_url_processo,
     build_url_movimento,
+    build_url_processo,
+    extract_comarca,
+    remove_special_characters,
 )
 
 

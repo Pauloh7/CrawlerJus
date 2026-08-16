@@ -3,7 +3,7 @@ from langchain.messages import (
     HumanMessage,
 )
 
-from legal_ai.util import get_user_npu, classify_question
+from legal_ai.util import classify_question, get_user_npu
 
 
 def test_deve_extrair_npu_da_ultima_mensagem_humana():

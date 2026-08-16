@@ -1,5 +1,6 @@
-import os
 import json
+import os
+
 from redis import asyncio as redis
 
 CACHE_URL = os.getenv("CACHE_URL", "redis://redis:6379/0")

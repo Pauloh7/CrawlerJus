@@ -4,7 +4,6 @@ from langchain.tools import tool
 
 from crawler_jus.services.search_service import SearchService
 
-
 logger = logging.getLogger(__name__)
 
 

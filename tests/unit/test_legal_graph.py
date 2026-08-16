@@ -1,5 +1,4 @@
 import pytest
-
 from langchain.messages import (
     AIMessage,
     ToolMessage,
@@ -45,29 +44,6 @@ class FakeModelWithTools:
             return next(self.responses)
 
         return RunnableLambda(fake_invoke)
-
-
-class FakeSearchService:
-    def __init__(self):
-        self.calls = []
-
-    async def search_npu(
-        self,
-        npu: str,
-        force_refresh: bool = False,
-    ):
-        self.calls.append(npu)
-
-        return {
-            "numeroProcesso": npu,
-            "classeCNJ": "CUMPRIMENTO DE SENTENÇA",
-            "partes": [
-                {
-                    "descricaoTipo": "EXEQUENTE",
-                    "nome": "UNIFERTIL",
-                }
-            ],
-        }
 
 
 @pytest.mark.asyncio

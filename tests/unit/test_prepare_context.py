@@ -1,5 +1,6 @@
-import pytest
+import json
 
+import pytest
 from langchain.messages import HumanMessage
 
 from legal_ai.nodes import prepare_context
@@ -109,7 +110,7 @@ async def test_prepare_context_geral_deve_manter_process_data():
     assert result["context_data"] == process_data
 
 
-import json
+
 
 
 @pytest.mark.asyncio

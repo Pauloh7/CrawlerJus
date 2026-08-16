@@ -1,5 +1,7 @@
-from langchain.messages import HumanMessage
 import re
+
+from langchain.messages import HumanMessage
+
 from legal_ai.state import AgentState
 
 NPU_IN_TEXT_PATTERN = re.compile(r"\b\d{1,7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}\b")
