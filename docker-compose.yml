@@ -81,7 +81,7 @@ services:
     image: ollama/ollama:latest
 
     environment:
-      OLLAMA_DEBUG: "1"
+    
 
     deploy:
       resources:
