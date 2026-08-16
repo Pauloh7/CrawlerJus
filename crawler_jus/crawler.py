@@ -1,27 +1,27 @@
 import asyncio
-import time
-import logging
 import base64
 import hashlib
 import json
+import logging
+import random
+import time
+from typing import Optional, Tuple
+
 import httpx
-from crawler_jus.util import find_obfuscate_and_extract_big_int
+from curl_cffi.requests import AsyncSession
 from tenacity import (
     retry,
-    wait_fixed,
     stop_after_attempt,
+    wait_fixed,
 )
-from curl_cffi.requests import AsyncSession
-from typing import Optional, Tuple
-import random
+
 from api.exceptions import (
+    TJRSNetworkError,
     TJRSRateLimit,
     TJRSUnauthorized,
     TJRSUpstreamError,
-    TJRSNetworkError,
 )
-import re
-
+from crawler_jus.util import find_obfuscate_and_extract_big_int
 
 logger = logging.getLogger()
 
@@ -43,6 +43,10 @@ class Crawler:
     """
 
     def __init__(self):
+        """Inicializa o crawler e os recursos usados nas consultas ao TJRS.
+        
+        Configura headers, cliente HTTP assíncrono, URLs de autenticação e caches internos do challenge.
+        """
         self.headers_consulta = {
             "Accept": "application/json, text/plain, */*",
             "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -111,7 +115,7 @@ class Crawler:
         Args:
             attempt (int): Quantidade de tentativas
         """
-        exp = min(cap, base * (2 ** attempt))
+        exp = min(cap, base * (2**attempt))
         wait = random.uniform(0, exp)
         await asyncio.sleep(wait)
 
@@ -145,10 +149,10 @@ class Crawler:
             final_str (str): Token challenge mais segredo em base64
         """
         big0, big1 = await self.get_big_ints()
+
         id_num = int(auth.replace("ChaAnon_", ""))
 
         n = (id_num % big0) + big1
-        
 
         me = id_num * n
 
@@ -157,7 +161,7 @@ class Crawler:
         ie = hashlib.sha256(se.encode()).hexdigest()
 
         final_str = f"{auth}:{ie}"
-    
+
         return base64.b64encode(final_str.encode()).decode()
 
     def solve_challenge(self, salt: str, challenge: str, maxnumber: int) -> int:
@@ -169,16 +173,16 @@ class Crawler:
         Returns:
             i (int): Número resultado do challenge
         """
-    
+
         for i in range(maxnumber + 1):
-            attempt = (salt + str(i)).encode('utf-8')
+            attempt = (salt + str(i)).encode("utf-8")
             result = hashlib.sha256(attempt).hexdigest()
             if result == challenge:
 
                 return i
 
         raise TJRSUpstreamError(
-        f"Não foi possível resolver o challenge (maxnumber={maxnumber})"
+            f"Não foi possível resolver o challenge (maxnumber={maxnumber})"
         )
 
     @retry(wait=wait_fixed(1), stop=stop_after_attempt(5), reraise=True)
@@ -219,7 +223,6 @@ class Crawler:
         authorization_json = json.loads(authorization_response.text)
         authorization_obfuscated = await self.obfuscate(authorization_json["username"])
         authorization = f"Basic {authorization_obfuscated}"
-        
 
         return authorization
 
@@ -237,13 +240,13 @@ class Crawler:
             TJRSNetworkError: timeout/erro de rede para TJRS
             TJRSUpstreamError: TJRS respondeu, mas veio quebrado (HTML, JSON inválido, 5xx persistente etc.)
         """
-        
+
         max_attempts = 4
         last_error: str | None = None
         rate_limit_hits = 0
         timeout = httpx.Timeout(connect=10.0, read=20.0, write=10.0, pool=10.0)
         timeout_hits = 0
-        resp = None 
+        resp = None
         for attempt in range(max_attempts):
             try:
                 auth = await self.get_auth()
@@ -266,7 +269,9 @@ class Crawler:
                     text = resp.text or ""
 
                     if resp.status_code in (401, 403):
-                        raise TJRSUnauthorized("Authorization inválido mesmo após refresh, tente novamente mais tarde.")
+                        raise TJRSUnauthorized(
+                            "Authorization inválido mesmo após refresh, tente novamente mais tarde."
+                        )
 
                 #  rate limit por status
                 if resp.status_code == 429:
@@ -297,10 +302,14 @@ class Crawler:
                     continue
 
                 # 4xx (fora 401/403/429)
-                if 400 <= resp.status_code < 500 and resp.status_code not in (401, 403, 429):
-                        raise TJRSUpstreamError(
-                            message=f"TJRS retornou erro {resp.status_code}"
-                        )
+                if 400 <= resp.status_code < 500 and resp.status_code not in (
+                    401,
+                    403,
+                    429,
+                ):
+                    raise TJRSUpstreamError(
+                        message=f"TJRS retornou erro {resp.status_code}"
+                    )
 
                 # resposta vazia
                 if not text.strip():
@@ -319,7 +328,9 @@ class Crawler:
                 return text
 
             except TJRSUnauthorized:
-                logger.warning(f"Não autorizado no TJRS | url={url} | attempt={attempt+1}")
+                logger.warning(
+                    f"Não autorizado no TJRS | url={url} | attempt={attempt+1}"
+                )
                 raise
             except TJRSUpstreamError as e:
                 status = getattr(resp, "status_code", None)
@@ -339,25 +350,47 @@ class Crawler:
             logger.warning(f"Rate limit TJRS | url={url} | hits={rate_limit_hits}")
             raise TJRSRateLimit("Limite de chamadas atingido (TJRS).", retry_after=30)
         if timeout_hits >= 1:
-            logger.warning(f"Timeout TJRS | url={url} | hits={timeout_hits} | last_error={last_error}")
+            logger.warning(
+                f"Timeout TJRS | url={url} | hits={timeout_hits} | last_error={last_error}"
+            )
             raise TJRSNetworkError(last_error or "Timeout consultando TJRS")
-        
-        logger.warning(f"Upstream inesperado TJRS | url={url} | last_error={last_error}")
+
+        logger.warning(
+            f"Upstream inesperado TJRS | url={url} | last_error={last_error}"
+        )
         raise TJRSUpstreamError(
             f"Falha ao consultar TJRS após {max_attempts} tentativas. Último erro: {last_error}"
-)
+        )
 
-
-    def extract_basic_data_partes(self, basic_data_json: str) -> dict:
-        """Função que extrai dados basicos e partes do processo.
-        Args:
-            basic_data_json (json): Json com dados que vem do site
-        Returns:
-            data (dict): Dicionario com dados de interesse
+    def extract_basic_data_partes(
+        self,
+        basic_data_json: str,
+    ) -> dict:
         """
+        Extrai os dados básicos e as partes
+        de um processo retornado pelo TJRS.
+
+        Args:
+            basic_data_json:
+                JSON retornado pelo TJRS.
+
+        Returns:
+            Dicionário contendo os dados do processo.
+            Retorna {} quando nenhum processo é encontrado.
+        """
+
         data_dict = json.loads(basic_data_json)
-        basic = (data_dict.get("data") or [{}])[0]
+
+        items = data_dict.get("data") or []
+
+        # Nenhum processo encontrado
+        if not items:
+            return {}
+
+        basic = items[0]
+
         partes = basic.get("partes", {}).get("parte", [])
+
         partes_list = [
             {
                 "descricaoTipo": p.get("descricaoTipo"),
@@ -365,28 +398,7 @@ class Crawler:
             }
             for p in partes
         ]
-        
-        data = {
-            "numeroProcesso": basic.get("numeroCNJFormatado"),
-            "numeroProcessoCNJ": basic.get("numeroCNJ"),
-            "classeCNJ": basic.get("classeCNJ"),
-            "assuntoCNJ": basic.get("assuntoCNJ"),
-            "nomeClasse": basic.get("nomeClasse"),
-            "nomeNatureza": basic.get("nomeNatureza"),
-            
-            "comarca": basic.get("comarca", {}).get("nome"),
-            "codigoComarca": basic.get("codigoComarca"),
-            
-            "dataDistribuicao": basic.get("dataDistribuicao"),
-            "dataPropositura": basic.get("dataPropositura"),
-            
-            "situacaoProcesso": basic.get("situacaoProcesso"),
-            "segredoJustica": basic.get("segredoJustica"),
-            "tipoProcesso": basic.get("tipoProcesso"),
 
-            "orgaoJulgador": basic.get("orgaoJulgador", {}).get("nome"),
-        }
-        data["partes"] = partes_list
         processos_vinculados = [
             {
                 "numeroProcesso": pv.get("numeroCNJ"),
@@ -397,10 +409,31 @@ class Crawler:
                 "orgaoJulgador": pv.get("nomeOrgaoJulgador"),
                 "ultimaMovimentacao": pv.get("dataUltimaMovimentacao"),
             }
-            for pv in basic.get("processosVinculados", [])
+            for pv in basic.get(
+                "processosVinculados",
+                [],
+            )
         ]
 
-        data["processosVinculados"] = processos_vinculados
+        data = {
+            "numeroProcesso": basic.get("numeroCNJFormatado"),
+            "numeroProcessoCNJ": basic.get("numeroCNJ"),
+            "classeCNJ": basic.get("classeCNJ"),
+            "assuntoCNJ": basic.get("assuntoCNJ"),
+            "nomeClasse": basic.get("nomeClasse"),
+            "nomeNatureza": basic.get("nomeNatureza"),
+            "comarca": (basic.get("comarca", {}).get("nome")),
+            "codigoComarca": basic.get("codigoComarca"),
+            "dataDistribuicao": basic.get("dataDistribuicao"),
+            "dataPropositura": basic.get("dataPropositura"),
+            "situacaoProcesso": basic.get("situacaoProcesso"),
+            "segredoJustica": basic.get("segredoJustica"),
+            "tipoProcesso": basic.get("tipoProcesso"),
+            "orgaoJulgador": (basic.get("orgaoJulgador", {}).get("nome")),
+            "partes": partes_list,
+            "processosVinculados": (processos_vinculados),
+        }
+
         return data
 
     def extract_movimentos(self, movimentos_json: str) -> list[dict[str]]:

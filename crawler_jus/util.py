@@ -1,10 +1,13 @@
-import re
-import httpx
 import logging
-from api.exceptions import TJRSUpstreamError
+import re
+
+import httpx
 from bs4 import BeautifulSoup
 
+from api.exceptions import TJRSUpstreamError
+
 logger = logging.getLogger()
+
 
 def remove_blank_space(txt: str) -> str:
     """Função que remove espaços de um texto
@@ -82,15 +85,19 @@ async def find_main_js() -> str:
     async with httpx.AsyncClient(timeout=10) as client:
         response = await client.get(url_base)
         html = response.text
-    soup = BeautifulSoup(html, 'html.parser')
+    soup = BeautifulSoup(html, "html.parser")
 
     # Busca todos os scripts e filtra pelo que começa com 'main.'
-    scripts = [script['src'] for script in soup.find_all('script', src=True)]
-    main_script_url = next((s for s in scripts if 'main.' in s), None)
+    scripts = [script["src"] for script in soup.find_all("script", src=True)]
+    main_script_url = next((s for s in scripts if "main." in s), None)
 
     if main_script_url:
         # Se o caminho for relativo, concatena com a base
-        full_url = main_script_url if main_script_url.startswith('http') else url_base + main_script_url
+        full_url = (
+            main_script_url
+            if main_script_url.startswith("http")
+            else url_base + main_script_url
+        )
         return full_url
 
 
@@ -105,23 +112,28 @@ async def find_obfuscate_and_extract_big_int() -> tuple:
     main_js_url = await find_main_js()
     async with httpx.AsyncClient(timeout=10) as client:
         response = await client.get(main_js_url)
-   
-    
+
     js_code = response.text
 
-    match =  re.search( r"obfuscation\s*\([^)]*\)\s*\{[\s\S]*?BigInt\s*\(\s*\d+\s*\)[\s\S]*?BigInt\s*\(\s*\d+\s*\)",js_code)
+    match = re.search(
+        r"obfuscation\s*\([^)]*\)\s*\{[\s\S]*?BigInt\s*\(\s*\d+\s*\)[\s\S]*?BigInt\s*\(\s*\d+\s*\)",
+        js_code,
+    )
     if not match:
         raise Exception("Função obfuscation não encontrada")
     obfuscate_code = match.group(0)
 
     big_ints = re.findall(r"BigInt\s*\(\s*(\d+)\s*\)", obfuscate_code)
     if len(big_ints) < 2:
-        logger.error(f"Falha Crítica: A estrutura do JS mudou. Encontrados apenas {len(big_ints)} BigInts.")
-        raise TJRSUpstreamError("A lógica de ofuscação do Tribunal mudou e o scraper precisa de atualização manual.")
+        logger.error(
+            f"Falha Crítica: A estrutura do JS mudou. Encontrados apenas {len(big_ints)} BigInts."
+        )
+        raise TJRSUpstreamError(
+            "A lógica de ofuscação do Tribunal mudou e o scraper precisa de atualização manual."
+        )
 
     return big_ints
-    
-    
+
 
 def normalize_npu_to_20_digits(npu: str) -> str:
     """
@@ -138,10 +150,8 @@ def normalize_npu_to_20_digits(npu: str) -> str:
         return digits
 
     # Se veio no formato pontuado, tentamos extrair os blocos
-    m = re.match(
-        r"^\s*(\d{1,7})-(\d{2})\.(\d{4})\.(\d)\.(\d{2})\.(\d{4})\s*$",
-        npu
-    )
+
+    m = re.match(r"^\s*(\d{1,7})-(\d{2})\.(\d{4})\.(\d)\.(\d{2})\.(\d{4})\s*$", npu)
     if m:
         seq, dv, ano, j, tr, oooo = m.groups()
         seq = seq.zfill(7)  # ✅ completa com zeros à esquerda
@@ -153,3 +163,48 @@ def normalize_npu_to_20_digits(npu: str) -> str:
         return digits.zfill(20)
 
     raise ValueError("NPU inválido (tamanho inesperado)")
+
+
+def calc_digito_verificador(digits: str) -> str:
+    """
+    Algoritmo CNJ (mod 97):
+    - pegue 20 dígitos
+    - monte: NNNNNNN + AAAAJTROOOO + "00" (substitui o DV por 00 no final)
+    - DV = 98 - (base % 97)
+    """
+    base = digits[:7] + digits[9:] + "00"
+    digito_verificador = 98 - (int(base) % 97)
+    return f"{digito_verificador:02d}"
+
+
+def format_cnj(digits: str) -> str:
+    # npu = 20 dígitos
+    """Formata uma sequência de 20 dígitos no padrão CNJ.
+    
+    Args:
+        digits (str): NPU contendo exatamente 20 dígitos.
+    
+    Returns:
+        str: NPU formatado no padrão NNNNNNN-DD.AAAA.J.TR.OOOO.
+    """
+    return f"{digits[:7]}-{digits[7:9]}.{digits[9:13]}.{digits[13]}.{digits[14:16]}.{digits[16:20]}"
+
+
+def valida_npu(npu: str) -> bool:
+    """Valida o dígito verificador de um NPU no padrão CNJ.
+    
+    Args:
+        npu (str): Número do processo com ou sem pontuação.
+    
+    Returns:
+        bool: True quando o NPU possui 20 dígitos e dígito verificador válido.
+    """
+    digits = "".join(char for char in npu if char.isdigit())
+
+    if len(digits) != 20:
+        return False
+
+    dv_informado = digits[7:9]
+    dv_calculado = calc_digito_verificador(digits)
+
+    return dv_informado == dv_calculado

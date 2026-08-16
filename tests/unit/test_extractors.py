@@ -1,4 +1,5 @@
 import json
+
 from crawler_jus.crawler import Crawler
 
 
@@ -220,3 +221,13 @@ def test_extract_movimentos():
     assert movimentos[0]["descricao"].startswith(
         "Expedida/certificada a intimação eletrônica"
     )
+
+
+def test_extract_basic_data_deve_retornar_vazio_sem_processo():
+    crawler = Crawler()
+
+    response = json.dumps({"data": []})
+
+    result = crawler.extract_basic_data_partes(response)
+
+    assert result == {}
