@@ -2,6 +2,7 @@ import logging
 
 from langchain.tools import tool
 
+from api.request_context import request_id_context
 from crawler_jus.services.search_service import SearchService
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,7 @@ def create_process_tools(service: SearchService):
         logger.info(
             "Consultando processo via AI tool",
             extra={
+                "request_id": request_id_context.get(),
                 "npu": npu,
                 "tool": "consultar_processo",
             },

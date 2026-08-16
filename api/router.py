@@ -1,3 +1,4 @@
+import logging
 import os
 import time
 from contextlib import asynccontextmanager
@@ -11,11 +12,16 @@ from api import schema
 from api.enums import HealthStatus
 from api.error_handlers import generic_exception_handler, tjrs_exception_handler
 from api.exceptions import TJRSBaseError
+from api.logging_config import configure_logging
+from api.request_context import RequestContextMiddleware, request_id_context
 from crawler_jus.crawler import Crawler
 from crawler_jus.services.search_service import SearchService
 from legal_ai.graph import create_legal_graph
 
 load_dotenv()
+configure_logging()
+
+logger = logging.getLogger(__name__)
 
 TJRS_URL = "https://www.tjrs.jus.br/novo/busca/?return=proc&client=wp_index#"
 
@@ -56,9 +62,17 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-app.add_exception_handler(TJRSBaseError, tjrs_exception_handler)
-app.add_exception_handler(Exception, generic_exception_handler)
+app.add_middleware(RequestContextMiddleware)
 
+app.add_exception_handler(
+    TJRSBaseError,
+    tjrs_exception_handler,
+)
+
+app.add_exception_handler(
+    Exception,
+    generic_exception_handler,
+)
 
 @app.get("/status")
 async def healthcheck():
@@ -121,20 +135,40 @@ async def search_npu(
     "/ask_ia",
     response_model=schema.AskIAResponse,
 )
+@app.post(
+    "/ask_ia",
+    response_model=schema.AskIAResponse,
+)
 async def ask_ia(
     data: schema.AskIAInput,
 ):
     """Executa uma pergunta no grafo jurídico mantendo o contexto da thread.
-    
+
     Args:
         data (schema.AskIAInput): Identificador da thread e pergunta do usuário.
-    
+
     Returns:
-        dict: Resposta do agente, NPU atual, contadores de execução e dados de erro.
+        dict: Resposta do agente, NPU atual, contadores de execução
+        e dados de erro.
     """
+    request_id = request_id_context.get()
+    started_at = time.perf_counter()
+
     graph = app.state.legal_graph
 
-    config = {"configurable": {"thread_id": data.thread_id}}
+    config = {
+        "configurable": {
+            "thread_id": data.thread_id,
+        }
+    }
+
+    logger.info(
+        "agent_request_started",
+        extra={
+            "request_id": request_id,
+            "thread_id": data.thread_id,
+        },
+    )
 
     result = await graph.ainvoke(
         {
@@ -150,13 +184,45 @@ async def ask_ia(
 
     answer = result["messages"][-1].content
 
+    duration_ms = (
+        time.perf_counter() - started_at
+    ) * 1000
+
+    logger.info(
+        "agent_request_completed",
+        extra={
+            "request_id": request_id,
+            "thread_id": data.thread_id,
+            "npu": result.get("npu"),
+            "duration_ms": round(duration_ms, 2),
+            "llm_calls": result.get("llm_calls", 0),
+            "tool_calls": result.get(
+                "tool_calls_count",
+                0,
+            ),
+            "external_calls": result.get(
+                "external_calls_count",
+                0,
+            ),
+            "cache_hits": result.get(
+                "cache_hits",
+                0,
+            ),
+            "error_type": result.get("error_type"),
+        },
+    )
+
     return {
         "answer": answer,
         "thread_id": data.thread_id,
         "npu": result.get("npu"),
         "llm_calls": result.get("llm_calls"),
-        "tool_calls": result.get("tool_calls_count"),
-        "external_calls": result.get("external_calls_count"),
+        "tool_calls": result.get(
+            "tool_calls_count"
+        ),
+        "external_calls": result.get(
+            "external_calls_count"
+        ),
         "cache_hits": result.get("cache_hits"),
         "error": result.get("error"),
         "error_type": result.get("error_type"),

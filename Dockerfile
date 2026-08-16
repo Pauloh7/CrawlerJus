@@ -23,9 +23,9 @@ COPY pyproject.toml poetry.lock* ./
 ARG ENV=prod
 
 RUN if [ "$ENV" = "dev" ]; then \
-        poetry install --no-interaction --no-ansi; \
+        poetry install --no-interaction --no-ansi --no-root; \
     else \
-        poetry install --no-interaction --no-ansi --only main; \
+        poetry install --no-interaction --no-ansi --only main --no-root; \
     fi
 
 RUN addgroup --system app \

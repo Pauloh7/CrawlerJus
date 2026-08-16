@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 
 from api.exceptions import (
     ProcessNotFoundError,
@@ -9,10 +10,8 @@ from api.exceptions import (
     TJRSUnauthorized,
     TJRSUpstreamError,
 )
-from crawler_jus.cache import (
-    get_cache,
-    set_cache,
-)
+from api.request_context import request_id_context
+from crawler_jus.cache import get_cache, set_cache
 from crawler_jus.crawler import Crawler
 from crawler_jus.util import (
     build_url_movimento,
@@ -25,19 +24,12 @@ logger = logging.getLogger(__name__)
 
 
 class SearchService:
-    """Serviço responsável por orquestrar a consulta de processos no TJRS.
-    
-    Centraliza normalização do NPU, cache, chamadas concorrentes ao crawler, parsing e tratamento de erros da consulta.
-    """
+    """Orquestra consultas processuais ao TJRS."""
+
     def __init__(
         self,
         crawler: Crawler,
     ):
-        """Inicializa o serviço com o crawler usado para acessar o TJRS.
-        
-        Args:
-            crawler (Crawler): Instância responsável pelas requisições e extração dos dados.
-        """
         self.crawler = crawler
 
     async def search_npu(
@@ -45,69 +37,117 @@ class SearchService:
         npu_original: str,
         force_refresh: bool = False,
     ) -> dict:
-        """
-        Serviço responsável pelas regras de negócio
-        da consulta de processos no TJRS.
+        """Consulta um processo no TJRS com cache e tratamento de falhas."""
 
-        Args:
-            npu_original:
-                Número do processo informado pelo usuário.
+        started_at = time.perf_counter()
 
-            force_refresh:
-                Se True, ignora o cache e força
-                nova consulta ao TJRS.
+        request_id = request_id_context.get()
 
-        Returns:
-            Dicionário com os dados do processo.
-
-        Raises:
-            ValueError:
-                Quando o NPU informado não pode ser normalizado.
-
-            TJRSUnauthorized:
-                Falha de autenticação no TJRS.
-
-            TJRSRateLimit:
-                Limite de requisições do TJRS.
-
-            TJRSUpstreamError:
-                Erro inesperado retornado pelo serviço do TJRS.
-
-            TJRSNetworkError:
-                Falha de rede durante a consulta.
-
-            TJRSParseError:
-                Falha ao interpretar a resposta do TJRS.
-
-            ProcessNotFoundError:
-                Processo não encontrado ou sem dados.
-        """
-
-        # 1. Normalização
-        npu_digits20 = normalize_npu_to_20_digits(npu_original)
+        npu_digits20 = normalize_npu_to_20_digits(
+            npu_original
+        )
 
         comarca = extract_comarca(npu_digits20)
 
-        cache_key = f"tjrs:{comarca}:{npu_digits20}"
+        cache_key = (
+            f"tjrs:{comarca}:{npu_digits20}"
+        )
 
-        # 2. Consulta ao cache
+        logger.info(
+            "process_search_started",
+            extra={
+                "request_id": request_id,
+                "npu": npu_digits20,
+                "comarca": comarca,
+                "force_refresh": force_refresh,
+            },
+        )
+
+        # --------------------------------------------------
+        # CACHE
+        # --------------------------------------------------
+
         if not force_refresh:
+            cache_started_at = time.perf_counter()
+
             try:
                 cached = await get_cache(cache_key)
 
+                cache_duration_ms = (
+                    time.perf_counter()
+                    - cache_started_at
+                ) * 1000
+
                 if cached:
+                    logger.info(
+                        "process_cache_hit",
+                        extra={
+                            "request_id": request_id,
+                            "npu": npu_digits20,
+                            "cache_key": cache_key,
+                            "duration_ms": round(
+                                cache_duration_ms,
+                                2,
+                            ),
+                        },
+                    )
+
+                    total_duration_ms = (
+                        time.perf_counter()
+                        - started_at
+                    ) * 1000
+
+                    logger.info(
+                        "process_search_completed",
+                        extra={
+                            "request_id": request_id,
+                            "npu": npu_digits20,
+                            "source": "cache",
+                            "duration_ms": round(
+                                total_duration_ms,
+                                2,
+                            ),
+                        },
+                    )
+
                     return cached
+
+                logger.info(
+                    "process_cache_miss",
+                    extra={
+                        "request_id": request_id,
+                        "npu": npu_digits20,
+                        "cache_key": cache_key,
+                        "duration_ms": round(
+                            cache_duration_ms,
+                            2,
+                        ),
+                    },
+                )
 
             except Exception:
                 logger.exception(
-                    "Falha ao consultar cache Redis",
+                    "process_cache_read_failed",
                     extra={
+                        "request_id": request_id,
                         "cache_key": cache_key,
                         "npu": npu_digits20,
                     },
                 )
 
-        # 3. Montagem das URLs
+        else:
+            logger.info(
+                "process_cache_bypassed",
+                extra={
+                    "request_id": request_id,
+                    "npu": npu_digits20,
+                },
+            )
+
+        # --------------------------------------------------
+        # URLs
+        # --------------------------------------------------
+
         url_consulta = build_url_processo(
             npu_digits20,
             comarca,
@@ -118,14 +158,53 @@ class SearchService:
             comarca,
         )
 
-        # 4. Requisições concorrentes
-        basic_data_response, movimentos_response = await asyncio.gather(
-            self.crawler.request_page(url_consulta),
-            self.crawler.request_page(url_movimentos),
-            return_exceptions=True,
+        # --------------------------------------------------
+        # TJRS
+        # --------------------------------------------------
+
+        upstream_started_at = time.perf_counter()
+
+        logger.info(
+            "tjrs_requests_started",
+            extra={
+                "request_id": request_id,
+                "npu": npu_digits20,
+            },
         )
 
-        # 5. Propagação de erros conhecidos
+        basic_data_response, movimentos_response = (
+            await asyncio.gather(
+                self.crawler.request_page(
+                    url_consulta
+                ),
+                self.crawler.request_page(
+                    url_movimentos
+                ),
+                return_exceptions=True,
+            )
+        )
+
+        upstream_duration_ms = (
+            time.perf_counter()
+            - upstream_started_at
+        ) * 1000
+
+        logger.info(
+            "tjrs_requests_completed",
+            extra={
+                "request_id": request_id,
+                "npu": npu_digits20,
+                "duration_ms": round(
+                    upstream_duration_ms,
+                    2,
+                ),
+            },
+        )
+
+        # --------------------------------------------------
+        # ERROS DO UPSTREAM
+        # --------------------------------------------------
+
         for response in (
             basic_data_response,
             movimentos_response,
@@ -139,56 +218,179 @@ class SearchService:
                     TJRSNetworkError,
                 ),
             ):
+                logger.warning(
+                    "tjrs_known_error",
+                    extra={
+                        "request_id": request_id,
+                        "npu": npu_digits20,
+                        "error_type": (
+                            type(response).__name__
+                        ),
+                    },
+                )
+
                 raise response
 
             if isinstance(
                 response,
                 Exception,
             ):
+                logger.exception(
+                    "tjrs_unexpected_error",
+                    extra={
+                        "request_id": request_id,
+                        "npu": npu_digits20,
+                        "error_type": (
+                            type(response).__name__
+                        ),
+                    },
+                    exc_info=(
+                        type(response),
+                        response,
+                        response.__traceback__,
+                    ),
+                )
+
                 raise TJRSUpstreamError(
                     "Erro inesperado durante "
                     "a consulta ao TJRS: "
                     f"{type(response).__name__}"
-                )
+                ) from response
 
-        # 6. Parsing da resposta
+        # --------------------------------------------------
+        # PARSING
+        # --------------------------------------------------
+
+        parse_started_at = time.perf_counter()
+
         try:
-            basic_data = self.crawler.extract_basic_data_partes(basic_data_response)
-
-            movimentos = self.crawler.extract_movimentos(movimentos_response)
-
-        except Exception as exc:
-            raise TJRSParseError(
-                f"Falha ao processar a resposta do TJRS: {type(exc).__name__}"
-            ) from exc
-
-        # 7. Verifica se o processo existe
-        if not basic_data:
-            raise ProcessNotFoundError(
-                "TJRS não retornou dados para o processo informado."
+            basic_data = (
+                self.crawler
+                .extract_basic_data_partes(
+                    basic_data_response
+                )
             )
 
-        # 8. Montagem do resultado
+            movimentos = (
+                self.crawler.extract_movimentos(
+                    movimentos_response
+                )
+            )
+
+        except Exception as exc:
+            logger.exception(
+                "tjrs_parse_failed",
+                extra={
+                    "request_id": request_id,
+                    "npu": npu_digits20,
+                    "error_type": (
+                        type(exc).__name__
+                    ),
+                },
+            )
+
+            raise TJRSParseError(
+                "Falha ao processar a resposta "
+                "do TJRS: "
+                f"{type(exc).__name__}"
+            ) from exc
+
+        parse_duration_ms = (
+            time.perf_counter()
+            - parse_started_at
+        ) * 1000
+
+        logger.info(
+            "tjrs_parse_completed",
+            extra={
+                "request_id": request_id,
+                "npu": npu_digits20,
+                "duration_ms": round(
+                    parse_duration_ms,
+                    2,
+                ),
+                "movimentos_count": len(
+                    movimentos
+                ),
+            },
+        )
+
+        # --------------------------------------------------
+        # PROCESSO NÃO ENCONTRADO
+        # --------------------------------------------------
+
+        if not basic_data:
+            logger.warning(
+                "process_not_found",
+                extra={
+                    "request_id": request_id,
+                    "npu": npu_digits20,
+                },
+            )
+
+            raise ProcessNotFoundError(
+                "TJRS não retornou dados para "
+                "o processo informado."
+            )
+
+        # --------------------------------------------------
+        # RESULTADO
+        # --------------------------------------------------
+
         results = {
             **basic_data,
             "movimentos": movimentos,
         }
 
-        # 9. Escrita no cache
+        # --------------------------------------------------
+        # CACHE WRITE
+        # --------------------------------------------------
+
         try:
             await set_cache(
                 cache_key,
                 results,
-                ttl=60,
+            )
+
+            logger.info(
+                "process_cache_written",
+                extra={
+                    "request_id": request_id,
+                    "npu": npu_digits20,
+                    "cache_key": cache_key,
+                },
             )
 
         except Exception:
             logger.exception(
-                "Falha ao gravar cache Redis",
+                "process_cache_write_failed",
                 extra={
+                    "request_id": request_id,
                     "cache_key": cache_key,
                     "npu": npu_digits20,
                 },
             )
+
+        # --------------------------------------------------
+        # FINAL
+        # --------------------------------------------------
+
+        total_duration_ms = (
+            time.perf_counter()
+            - started_at
+        ) * 1000
+
+        logger.info(
+            "process_search_completed",
+            extra={
+                "request_id": request_id,
+                "npu": npu_digits20,
+                "source": "tjrs",
+                "duration_ms": round(
+                    total_duration_ms,
+                    2,
+                ),
+            },
+        )
 
         return results

@@ -1,3 +1,5 @@
+from uuid import UUID
+
 import pytest
 from httpx import (
     ASGITransport,
@@ -186,3 +188,24 @@ async def test_search_npu_deve_retornar_502_em_erro_de_parse(
     assert data["error"] == "TJRSParseError"
 
     assert data["detail"] == "Falha ao interpretar resposta do TJRS"
+@pytest.mark.asyncio
+async def test_response_deve_conter_request_id():
+    transport = ASGITransport(app=app)
+
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+    ) as client:
+        response = await client.get(
+            "/endpoint-que-nao-existe"
+        )
+
+    assert response.status_code == 404
+
+    request_id = response.headers.get(
+        "x-request-id"
+    )
+
+    assert request_id is not None
+
+    UUID(request_id)

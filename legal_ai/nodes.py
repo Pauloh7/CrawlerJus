@@ -1,9 +1,12 @@
+import logging
+import time
 from typing import Literal
 
 from langchain.messages import ToolMessage
 from langgraph.graph import END
 
 from api.exceptions import TJRSBaseError
+from api.request_context import request_id_context
 from crawler_jus.util import valida_npu
 from legal_ai.state import AgentState
 from legal_ai.util import (
@@ -12,6 +15,9 @@ from legal_ai.util import (
     get_user_npu,
     select_npu,
 )
+
+logger = logging.getLogger(__name__)
+
 
 SYSTEM_PROMPT = """
 Você é um assistente especializado em processos judiciais brasileiros.
@@ -62,16 +68,22 @@ async def search_process(
     tools_by_name: dict,
 ):
     """Executa ou reutiliza a consulta de processo solicitada pelo agente.
-    
-    Seleciona o NPU por ordem de confiança, valida a ferramenta e o número do processo, reutiliza dados do estado quando disponíveis e controla contadores de tool, cache e chamadas externas.
-    
+
+    Seleciona o NPU por ordem de confiança, valida a ferramenta e o número
+    do processo, reutiliza dados do estado quando disponíveis e controla
+    contadores de tool, cache e chamadas externas.
+
     Args:
         state (AgentState): Estado atual do agente.
         tools_by_name (dict): Mapeamento das ferramentas disponíveis pelo nome.
-    
+
     Returns:
-        dict: Atualização parcial do estado com ToolMessage, dados do processo, contadores e erros.
+        dict: Atualização parcial do estado com ToolMessage, dados do processo,
+        contadores e erros.
     """
+    request_id = request_id_context.get()
+    started_at = time.perf_counter()
+
     last_message = state["messages"][-1]
     tool_call = last_message.tool_calls[0]
 
@@ -79,7 +91,10 @@ async def search_process(
     tool_args = tool_call["args"]
     tool_call_id = tool_call["id"]
 
-    tool_calls_count = state.get("tool_calls_count", 0) + 1
+    tool_calls_count = state.get(
+        "tool_calls_count",
+        0,
+    ) + 1
 
     current_external_calls = state.get(
         "external_calls_count",
@@ -101,13 +116,35 @@ async def search_process(
         llm_npu=llm_npu,
     )
 
+    logger.info(
+        "agent_tool_started",
+        extra={
+            "request_id": request_id,
+            "tool": tool_name,
+            "npu": requested_npu,
+            "tool_call_number": tool_calls_count,
+        },
+    )
+
     tool = tools_by_name.get(tool_name)
 
     if tool is None:
+        logger.warning(
+            "agent_unknown_tool",
+            extra={
+                "request_id": request_id,
+                "tool": tool_name,
+                "tool_call_number": tool_calls_count,
+            },
+        )
+
         return {
             "messages": [
                 ToolMessage(
-                    content=f"A ferramenta '{tool_name}' não está disponível.",
+                    content=(
+                        f"A ferramenta '{tool_name}' "
+                        "não está disponível."
+                    ),
                     tool_call_id=tool_call_id,
                     name=tool_name,
                 )
@@ -118,10 +155,21 @@ async def search_process(
         }
 
     if not requested_npu:
+        logger.warning(
+            "agent_missing_npu",
+            extra={
+                "request_id": request_id,
+                "tool": tool_name,
+                "tool_call_number": tool_calls_count,
+            },
+        )
+
         return {
             "messages": [
                 ToolMessage(
-                    content="Nenhum número de processo foi informado.",
+                    content=(
+                        "Nenhum número de processo foi informado."
+                    ),
                     tool_call_id=tool_call_id,
                     name=tool_name,
                 )
@@ -132,6 +180,16 @@ async def search_process(
         }
 
     if not valida_npu(requested_npu):
+        logger.warning(
+            "agent_invalid_npu",
+            extra={
+                "request_id": request_id,
+                "tool": tool_name,
+                "npu": requested_npu,
+                "tool_call_number": tool_calls_count,
+            },
+        )
+
         return {
             "messages": [
                 ToolMessage(
@@ -152,21 +210,67 @@ async def search_process(
         requested_npu,
     ):
         result = state["process_data"]
+
         cache_hits = current_cache_hits + 1
         external_calls = current_external_calls
+        source = "checkpoint"
+
+        logger.info(
+            "agent_tool_cache_hit",
+            extra={
+                "request_id": request_id,
+                "tool": tool_name,
+                "npu": requested_npu,
+                "cache_hits": cache_hits,
+            },
+        )
 
     else:
         external_calls = current_external_calls + 1
         cache_hits = current_cache_hits
+        source = "external"
+
+        logger.info(
+            "agent_tool_external_call",
+            extra={
+                "request_id": request_id,
+                "tool": tool_name,
+                "npu": requested_npu,
+                "external_calls": external_calls,
+            },
+        )
 
         try:
-            result = await tool.ainvoke(tool_args)
+            result = await tool.ainvoke(
+                tool_args
+            )
 
         except TJRSBaseError as exc:
+            duration_ms = (
+                time.perf_counter() - started_at
+            ) * 1000
+
+            logger.warning(
+                "agent_tool_failed",
+                extra={
+                    "request_id": request_id,
+                    "tool": tool_name,
+                    "npu": requested_npu,
+                    "error_type": type(exc).__name__,
+                    "duration_ms": round(
+                        duration_ms,
+                        2,
+                    ),
+                },
+            )
+
             return {
                 "messages": [
                     ToolMessage(
-                        content="Não foi possível consultar o processo no TJRS.",
+                        content=(
+                            "Não foi possível consultar "
+                            "o processo no TJRS."
+                        ),
                         tool_call_id=tool_call_id,
                         name=tool_name,
                     )
@@ -177,6 +281,27 @@ async def search_process(
                 "error": str(exc),
                 "error_type": type(exc).__name__,
             }
+
+    duration_ms = (
+        time.perf_counter() - started_at
+    ) * 1000
+
+    logger.info(
+        "agent_tool_completed",
+        extra={
+            "request_id": request_id,
+            "tool": tool_name,
+            "npu": requested_npu,
+            "source": source,
+            "duration_ms": round(
+                duration_ms,
+                2,
+            ),
+            "tool_calls": tool_calls_count,
+            "external_calls": external_calls,
+            "cache_hits": cache_hits,
+        },
+    )
 
     return {
         "messages": [
@@ -198,20 +323,33 @@ async def search_process(
         "error_type": None,
     }
 
-
 async def call_model(
     state: AgentState,
     model_with_tools,
 ):
-    """Invoca o modelo com o prompt de sistema, contexto reduzido e histórico da conversa.
-    
+    """Invoca o modelo com o prompt de sistema, contexto reduzido e histórico.
+
     Args:
         state (AgentState): Estado atual do agente.
-        model_with_tools: Modelo de linguagem configurado com as ferramentas disponíveis.
-    
+        model_with_tools: Modelo configurado com as ferramentas disponíveis.
+
     Returns:
-        dict: Atualização do estado com a resposta do modelo e contador de chamadas ao LLM.
+        dict: Atualização do estado com a resposta do modelo
+        e contador de chamadas ao LLM.
     """
+    request_id = request_id_context.get()
+    started_at = time.perf_counter()
+
+    current_llm_calls = state.get("llm_calls", 0)
+
+    logger.info(
+        "llm_call_started",
+        extra={
+            "request_id": request_id,
+            "llm_call_number": current_llm_calls + 1,
+        },
+    )
+
     messages = [
         {
             "role": "system",
@@ -226,8 +364,8 @@ async def call_model(
             {
                 "role": "system",
                 "content": (
-                    "Dados relevantes do processo "
-                    "para responder à pergunta atual:\n"
+                    "Dados processuais disponíveis para "
+                    "responder à pergunta atual:\n"
                     f"{context_data}"
                 ),
             }
@@ -235,11 +373,56 @@ async def call_model(
 
     messages.extend(state["messages"])
 
-    response = await model_with_tools.ainvoke(messages)
+    try:
+        response = await model_with_tools.ainvoke(
+            messages
+        )
+    except Exception as exc:
+        duration_ms = (
+            time.perf_counter() - started_at
+        ) * 1000
+
+        logger.exception(
+            "llm_call_failed",
+            extra={
+                "request_id": request_id,
+                "llm_call_number": current_llm_calls + 1,
+                "duration_ms": round(
+                    duration_ms,
+                    2,
+                ),
+                "error_type": type(exc).__name__,
+            },
+        )
+
+        raise
+
+    duration_ms = (
+        time.perf_counter() - started_at
+    ) * 1000
+
+    logger.info(
+        "llm_call_completed",
+        extra={
+            "request_id": request_id,
+            "llm_call_number": current_llm_calls + 1,
+            "duration_ms": round(
+                duration_ms,
+                2,
+            ),
+            "has_tool_calls": bool(
+                getattr(
+                    response,
+                    "tool_calls",
+                    None,
+                )
+            ),
+        },
+    )
 
     return {
         "messages": [response],
-        "llm_calls": (state.get("llm_calls", 0) + 1),
+        "llm_calls": current_llm_calls + 1,
     }
 
 

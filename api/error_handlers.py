@@ -4,6 +4,7 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from api.exceptions import TJRSBaseError
+from api.request_context import request_id_context
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +22,12 @@ async def tjrs_exception_handler(
     Returns:
         JSONResponse: Resposta com status e detalhes definidos pela exceção.
     """
+    request_id = request_id_context.get()
+
     logger.warning(
-        "Erro conhecido ao processar requisição TJRS",
+        "tjrs_error",
         extra={
+            "request_id": request_id,
             "path": request.url.path,
             "error_type": type(exc).__name__,
             "status_code": exc.status_code,
@@ -35,6 +39,7 @@ async def tjrs_exception_handler(
         content={
             "error": type(exc).__name__,
             "detail": str(exc),
+            "request_id": request_id,
         },
     )
 
@@ -52,9 +57,12 @@ async def generic_exception_handler(
     Returns:
         JSONResponse: Resposta HTTP 500 com mensagem genérica.
     """
+    request_id = request_id_context.get()
+
     logger.exception(
-        "Erro não tratado na API",
+        "unhandled_error",
         extra={
+            "request_id": request_id,
             "path": request.url.path,
             "error_type": type(exc).__name__,
         },
@@ -65,5 +73,6 @@ async def generic_exception_handler(
         content={
             "error": "INTERNAL_SERVER_ERROR",
             "detail": "Erro interno inesperado",
+            "request_id": request_id,
         },
     )
