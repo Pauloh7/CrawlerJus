@@ -4,7 +4,11 @@ version = "0.1.0"
 description = "API FastAPI para consulta TJRS"
 authors = ["pauloh7 <pauloh.gomes1@gmail.com>"]
 readme = "README.md"
-packages = [{ include = "crawler_jus" }]
+packages = [
+    { include = "crawler_jus" },
+    { include = "api" },
+    { include = "legal_ai" },
+]
 
 [tool.poetry.dependencies]
 python = ">=3.12,<3.13"
