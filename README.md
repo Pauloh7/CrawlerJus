@@ -1,251 +1,873 @@
-# Introdução Desafio Jusbrasil
+# CrawlerJus
 
-Projeto desenvolvido a partir de desafio feito pela empresa Jusbrasil.
+API de consulta processual desenvolvida em Python para coleta estruturada de dados do **Tribunal de Justiça do Rio Grande do Sul (TJRS)**, com cache, tratamento de falhas, persistência de contexto e um agente de IA capaz de consultar e responder perguntas sobre processos judiciais.
 
-# Descrição
+O projeto nasceu a partir de um desafio técnico da **Jusbrasil** e evoluiu para um projeto de portfólio com foco em **web scraping resiliente, APIs assíncronas, observabilidade, testes, CI e aplicações de IA generativa**.
 
-Este projeto simula um cenário real de scraping jurídico em produção, onde o site alvo possui autenticação dinâmica, limitação de requisições e mudanças frequentes de comportamento. A solução implementa uma arquitetura em camadas, tratamento robusto de falhas e mecanismos de cache para garantir estabilidade e performance.
+---
 
-## 📖 Sumário
+## Sumário
 
-1. [Introdução](#introdução-desafio-jusbrasil)  
-2. [Descrição](#descrição)  
-3. [Iniciando](#iniciando)  
-   - [Dependências](#dependências)  
-   - [Instalação](#instalação)  
-   - [Executando o Projeto](#executando-projeto)  
-4. [Funcionalidades da API](#funcionalidades-da-api)  
-   - [Buscando processo](#buscando-processo)
-   - [Verificando o Status do Serviço](#verificando-o-status-do-serviço) 
-5. [Executando os Testes](#executando-os-testes)
-6. [Relatório  Final](#relatório-final)
-7. [Autor](#autor)  
+- [Visão geral](#visão-geral)
+- [Principais funcionalidades](#principais-funcionalidades)
+- [Arquitetura](#arquitetura)
+- [Stack](#stack)
+- [Como a coleta do TJRS funciona](#como-a-coleta-do-tjrs-funciona)
+- [Agente de IA](#agente-de-ia)
+- [Observabilidade](#observabilidade)
+- [Executando o projeto](#executando-o-projeto)
+- [API](#api)
+- [Testes](#testes)
+- [CI](#ci)
+- [Tratamento de erros](#tratamento-de-erros)
+- [Desafios técnicos](#desafios-técnicos)
+- [Decisões de projeto](#decisões-de-projeto)
+- [Limitações e próximos passos](#limitações-e-próximos-passos)
+- [Autor](#autor)
 
-# Iniciando
+---
 
-## Dependências
-* Python 3.11
-* Docker
-##### Windows
-https://docs.docker.com/desktop/setup/install/windows-install/
-##### Linux
+## Visão geral
+
+O CrawlerJus simula um cenário real de coleta de dados jurídicos em produção.
+
+O sistema consulta processos do TJRS, normaliza e valida NPUs, reproduz o fluxo de autenticação utilizado pelo tribunal, trata falhas de comunicação, utiliza cache para reduzir acessos repetidos e entrega os dados através de uma API FastAPI.
+
+Além da consulta tradicional, o projeto possui um agente baseado em **LangGraph + Ollama/Qwen**, capaz de decidir quando precisa consultar um processo e responder perguntas usando os dados processuais recuperados.
+
+A aplicação foi estruturada para manter separadas as responsabilidades de:
+
+- acesso ao tribunal;
+- autenticação;
+- parsing;
+- regras de negócio;
+- cache;
+- API;
+- agente de IA;
+- persistência de contexto;
+- observabilidade.
+
+---
+
+## Principais funcionalidades
+
+### Coleta processual
+
+- Consulta de processos do TJRS por NPU.
+- Normalização e validação do número CNJ.
+- Consulta de dados básicos, partes e movimentações.
+- Requisições assíncronas e concorrentes.
+- Autenticação dinâmica do TJRS reproduzida em Python.
+- Renovação automática de credenciais.
+- Retry com backoff para falhas transitórias.
+- Tratamento específico para rate limit.
+- Cache Redis com TTL configurável.
+- Opção de ignorar o cache através de `force_refresh`.
+
+### Agente de IA
+
+- Orquestração com LangGraph.
+- Modelo local Qwen executado através do Ollama.
+- Tool calling para consulta processual.
+- Reutilização de dados já consultados.
+- Persistência de conversas e estado em PostgreSQL.
+- Continuidade entre requisições utilizando `thread_id`.
+- Contexto reduzido e direcionado para evitar enviar dados desnecessários ao modelo.
+- Contadores de chamadas ao modelo, tools, consultas externas e reaproveitamento de dados.
+
+### Engenharia e qualidade
+
+- FastAPI.
+- Docker e Docker Compose.
+- PostgreSQL.
+- Redis.
+- Ruff.
+- Pytest.
+- Testes unitários e de integração.
+- GitHub Actions.
+- Logs estruturados em JSON.
+- Request ID para rastreamento ponta a ponta.
+- Execução do Ollama com aceleração NVIDIA quando disponível.
+
+---
+
+## Arquitetura
+
+```text
+                         ┌─────────────────────┐
+                         │       Cliente       │
+                         └──────────┬──────────┘
+                                    │
+                                    ▼
+                         ┌─────────────────────┐
+                         │       FastAPI       │
+                         │                     │
+                         │ /status             │
+                         │ /search_npu         │
+                         │ /ask_ia             │
+                         └───────┬─────┬───────┘
+                                 │     │
+                    ┌────────────┘     └─────────────┐
+                    ▼                                ▼
+          ┌───────────────────┐             ┌──────────────────┐
+          │   SearchService   │             │    LangGraph     │
+          └─────────┬─────────┘             └────────┬─────────┘
+                    │                                │
+          ┌─────────┼─────────┐             ┌────────┼─────────┐
+          ▼         ▼         ▼             ▼        ▼         ▼
+       Redis      TJRS     Parsers        Qwen     Tools   PostgreSQL
+        Cache    HTTP API               Ollama            Checkpoint
+                    ▲                                │
+                    └────────────────────────────────┘
+                           consultar_processo
 ```
-sudo apt update
-sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-```
-## Instalação
 
-### Clonar projeto do git.
-* Abrir terminal
-* Navegar até a pasta para onde desejar importar o projeto
-* Executar o comando
-```
-git clone git@github.com:Pauloh7/CrawlerJus.git
-```
-## Executando Projeto
-##### Buildar docker e subir aplicação.
-* Abrir terminal ou powershell
-* Navegar até a pasta do projeto
-* Executar o comando
-```
-docker compose -f docker-compose.prod.yml build
-```
-* O docker irá buildar a imagem, depois rode. 
-```
-docker compose -f docker-compose.prod.yml up
-```
-* O container com api irá subir.
-## Funcionalidades da API
-### Buscando processo
+### Fluxo de consulta direta
 
-#### Exemplo de Chamada
-
-```
-curl -X POST \
-    "http://0.0.0.0:8000/search_npu?force_refresh=true" \
-    -H "Content-Type: application/json" \
-    -H "Accept: application/json" \
-    -d '{
-         "npu": "5056077-84.2025.8.21.0008"
-        }'
+```text
+POST /search_npu
+       │
+       ▼
+Validação e normalização do NPU
+       │
+       ▼
+Consulta ao Redis
+       │
+       ├── HIT ──► resposta
+       │
+       └── MISS
+              │
+              ▼
+        autenticação TJRS
+              │
+              ▼
+   requisições assíncronas
+              │
+              ▼
+            parsing
+              │
+              ▼
+          cache Redis
+              │
+              ▼
+           resposta
 ```
 
-#### Parâmetros da Requisição
+### Fluxo do agente
 
-| Parâmetro  | Tipo   | Descrição |
-|------------|--------|-------------|
-| npu       | string | Número do processo a ser extraido |
-| force_refresh| boolean| Força nova consulta ao tribunal, ignorando o cache |
-
-#### Exemplo de Resposta
-
+```text
+POST /ask_ia
+      │
+      ▼
+ carregar checkpoint
+      │
+      ▼
+ preparar contexto
+      │
+      ▼
+     Qwen
+      │
+      ├── consegue responder ─────────► resposta
+      │
+      └── precisa consultar processo
+                    │
+                    ▼
+            consultar_processo
+                    │
+                    ▼
+              SearchService
+                    │
+                    ▼
+              atualizar estado
+                    │
+                    ▼
+             preparar contexto
+                    │
+                    ▼
+                  Qwen
+                    │
+                    ▼
+                resposta
 ```
-HTTP/1.1 200 OK
-Content-Type: application/json
 
+---
+
+## Stack
+
+| Área | Tecnologia |
+|---|---|
+| Linguagem | Python 3.12 |
+| API | FastAPI |
+| Servidor ASGI | Uvicorn |
+| HTTP / scraping | `curl_cffi`, `httpx` |
+| Parsing | BeautifulSoup |
+| Assincronismo | `asyncio` |
+| Retry | Tenacity |
+| Cache | Redis |
+| Agente | LangGraph |
+| LLM | Qwen3 8B |
+| Runtime LLM | Ollama |
+| Checkpoint | PostgreSQL |
+| Driver PostgreSQL | Psycopg |
+| Containers | Docker / Docker Compose |
+| Testes | Pytest |
+| Lint | Ruff |
+| CI | GitHub Actions |
+
+---
+
+## Como a coleta do TJRS funciona
+
+O sistema de consulta processual do TJRS utiliza um fluxo de autenticação dinâmica antes de permitir o acesso aos dados.
+
+De forma simplificada:
+
+```text
+1. Acessa a aplicação pública do TJRS
+2. Obtém os dados necessários para autenticação
+3. Resolve o challenge recebido pelo servidor
+4. Reproduz o algoritmo esperado pelo TJRS
+5. Obtém a autorização
+6. Executa a consulta processual
+7. Extrai e normaliza os dados
+```
+
+O challenge utiliza SHA-256 e dados fornecidos dinamicamente pelo servidor. Parte da lógica necessária para reproduzir o fluxo de autenticação foi identificada através de engenharia reversa do JavaScript da aplicação.
+
+A implementação utiliza requisições HTTP, sem depender de Selenium ou Playwright para a coleta principal.
+
+### Dados extraídos
+
+Entre os dados retornados estão:
+
+- número do processo;
+- classe;
+- assunto;
+- natureza;
+- comarca;
+- órgão julgador;
+- situação;
+- partes;
+- processos vinculados;
+- movimentações processuais.
+
+---
+
+## Agente de IA
+
+O endpoint `/ask_ia` disponibiliza uma camada conversacional sobre os dados processuais.
+
+O agente utiliza um grafo com estado e pode decidir se precisa executar a tool `consultar_processo`.
+
+### Componentes principais
+
+```text
+State
+  │
+  ├── messages
+  ├── npu
+  ├── process_data
+  ├── context_data
+  ├── llm_calls
+  ├── tool_calls
+  ├── external_calls
+  └── cache_hits
+```
+
+O fluxo possui nós responsáveis por:
+
+- preparar o contexto;
+- chamar o modelo;
+- executar a consulta processual quando necessário;
+- reutilizar dados existentes;
+- persistir o estado.
+
+### Memória e checkpoint
+
+O estado do LangGraph é persistido em PostgreSQL.
+
+Isso permite continuar uma conversa utilizando o mesmo `thread_id`, inclusive após reinicializações da API.
+
+Exemplo:
+
+```text
+Pergunta 1:
+"Consulte o processo 5001646-66.2026.8.21.0008 e me diga a classe."
+
+Pergunta 2:
+"E quais são as partes dele?"
+```
+
+Na segunda pergunta, o agente pode reutilizar os dados processuais persistidos sem consultar novamente o tribunal.
+
+---
+
+## Observabilidade
+
+Cada requisição HTTP recebe um `request_id` único.
+
+Esse identificador acompanha a execução pelas diferentes camadas da aplicação:
+
+```text
+HTTP
+ ↓
+FastAPI
+ ↓
+LangGraph
+ ↓
+Tool
+ ↓
+SearchService
+ ↓
+TJRS
+```
+
+Os logs são estruturados em JSON e incluem informações como:
+
+- `request_id`;
+- endpoint;
+- status HTTP;
+- duração total;
+- duração da chamada ao LLM;
+- duração da consulta ao TJRS;
+- cache hit/miss;
+- número de tool calls;
+- número de chamadas externas;
+- tipo de erro.
+
+Exemplo:
+
+```json
 {
-  "numeroProcesso": "5056077-84.2025.8.21.0008",
-  "numeroProcessoCNJ": "50560778420258210008",
+  "timestamp": "2026-08-16T23:03:28.127795+00:00",
+  "level": "INFO",
+  "logger": "api.router",
+  "event": "agent_request_completed",
+  "request_id": "f80617af-66b6-4391-a0ac-21a44a31145f",
+  "thread_id": "gpu-performance-test",
+  "npu": "5001646-66.2026.8.21.0008",
+  "duration_ms": 96254.89,
+  "llm_calls": 2,
+  "tool_calls": 1,
+  "external_calls": 1,
+  "cache_hits": 0,
+  "error_type": null
+}
+```
+
+O header `X-Request-ID` também é retornado ao cliente.
+
+---
+
+## Executando o projeto
+
+### Pré-requisitos
+
+- Docker
+- Docker Compose
+- Git
+
+Para desenvolvimento local sem Docker também é utilizado:
+
+- Python 3.12
+- Poetry
+
+### Clonando o repositório
+
+```bash
+git clone git@github.com:Pauloh7/CrawlerJus.git
+cd CrawlerJus
+```
+
+### Desenvolvimento com Docker
+
+```bash
+docker compose up -d
+```
+
+Verifique os serviços:
+
+```bash
+docker compose ps
+```
+
+Acompanhe os logs da API:
+
+```bash
+docker compose logs -f api
+```
+
+A API ficará disponível em:
+
+```text
+http://localhost:8000
+```
+
+Swagger:
+
+```text
+http://localhost:8000/docs
+```
+
+ReDoc:
+
+```text
+http://localhost:8000/redoc
+```
+
+### Parando o ambiente
+
+```bash
+docker compose down
+```
+
+> Evite `docker compose down -v` se quiser preservar os volumes do PostgreSQL, Redis e Ollama.
+
+### Produção
+
+O projeto também possui um Compose dedicado ao ambiente de produção.
+
+```bash
+docker compose -f docker-compose.prod.yml build
+docker compose -f docker-compose.prod.yml up -d
+```
+
+---
+
+## GPU para o Ollama
+
+O Ollama pode executar apenas em CPU, porém o uso de GPU reduz significativamente a latência do modelo.
+
+O Compose pode reservar uma GPU NVIDIA para o serviço:
+
+```yaml
+deploy:
+  resources:
+    reservations:
+      devices:
+        - driver: nvidia
+          count: all
+          capabilities:
+            - gpu
+```
+
+Para verificar onde o modelo está sendo executado:
+
+```bash
+docker compose exec ollama ollama ps
+```
+
+Exemplo:
+
+```text
+NAME        SIZE      PROCESSOR
+qwen3:8b    5.6 GB    100% GPU
+```
+
+A GPU é opcional. Caso não esteja disponível, o Ollama pode executar utilizando CPU.
+
+---
+
+# API
+
+## `GET /status`
+
+Verifica a disponibilidade da API e da fonte externa.
+
+### Exemplo
+
+```bash
+curl "http://localhost:8000/status"
+```
+
+### Resposta
+
+```json
+{
+  "status": "ok",
+  "api": "ok",
+  "tribunal_site": "ok",
+  "response_time_ms": 812.19
+}
+```
+
+---
+
+## `POST /search_npu`
+
+Consulta diretamente um processo.
+
+### Body
+
+```json
+{
+  "npu": "5001646-66.2026.8.21.0008"
+}
+```
+
+### Parâmetros
+
+| Parâmetro | Tipo | Descrição |
+|---|---|---|
+| `npu` | string | Número CNJ do processo |
+| `force_refresh` | boolean | Ignora o cache e força nova consulta |
+
+### Exemplo
+
+```bash
+curl -X POST   "http://localhost:8000/search_npu?force_refresh=false"   -H "Content-Type: application/json"   -d '{
+    "npu": "5001646-66.2026.8.21.0008"
+  }'
+```
+
+### Exemplo de resposta
+
+```json
+{
+  "numeroProcesso": "5001646-66.2026.8.21.0008",
+  "numeroProcessoCNJ": "50016466620268210008",
   "classeCNJ": "CUMPRIMENTO DE SENTENÇA",
-  "assuntoCNJ": "Compromisso, Espécies de contratos, Obrigações, DIREITO CIVIL",
   "nomeClasse": "CUMPRIMENTO DE SENTENÇA",
-  "nomeNatureza": "Compromisso, Espécies de contratos, Obrigações, DIREITO CIVIL",
   "comarca": "CANOAS",
   "codigoComarca": "8",
-  "dataDistribuicao": "04/12/2025 09:25:41",
-  "dataPropositura": null,
-  "situacaoProcesso": "MOVIMENTO",
-  "segredoJustica": false,
-  "tipoProcesso": "EPROC",
-  "orgaoJulgador": "1º Juízo da 2ª Vara Cível da Comarca de Canoas",
   "partes": [
     {
       "descricaoTipo": "EXEQUENTE",
-      "nome": "SERAFINI ADVOGADOS"
+      "nome": "..."
     },
     {
       "descricaoTipo": "EXECUTADO",
-      "nome": "BANCO BRADESCO S.A."
-    },
-    {
-      "descricaoTipo": "EXECUTADO",
-      "nome": "PETRÓLEO BRASILEIRO S/A - PETROBRÁS"
-    }
-  ],
-  "processosVinculados": [
-    {
-      "numeroProcesso": "50019831220138210008",
-      "numeroFormatado": null,
-      "classe": null,
-      "assunto": null,
-      "comarca": "0008",
-      "orgaoJulgador": null,
-      "ultimaMovimentacao": null
+      "nome": "..."
     }
   ],
   "movimentos": [
     {
-      "data": "21/01/2026",
-      "descricao": "Publicado no DJEN - no dia 21/01/2026 - Refer. ao Evento: 4"
-    },
-    {
-      "data": "13/01/2026",
-      "descricao": "PETIÇÃO PROTOCOLADA JUNTADA - PETIÇÃO"
-    },
-    {
-      "data": "12/01/2026",
-      "descricao": "PETIÇÃO PROTOCOLADA JUNTADA - PETIÇÃO"
-    },
-    {
-      "data": "09/01/2026",
-      "descricao": "Ato cumprido pela parte ou interessado - depósito de bens/dinheiro - Confirmação de recolhimento - GUIA DE DEPÓSITO: 265002332"
-    },
-    {
-      "data": "31/12/2025",
-      "descricao": "Ato Ordinatório - Vinculado depósito judicial BACENJUD/SISBAJUD - GUIA: 255823179"
-    },
-    {
-      "data": "28/12/2025",
-      "descricao": "Confirmada a intimação eletrônica - Refer. ao Evento: 5 - Ciência Tácita"
-    },
-    {
-      "data": "19/12/2025",
-      "descricao": "Disponibilizado no DJEN - no dia 19/12/2025 - Refer. ao Evento: 4"
-    },
-    {
-      "data": "18/12/2025",
-      "descricao": "Expedida/certificada a intimação eletrônica (EXECUTADO -  PETRÓLEO BRASILEIRO S/A - PETROBRÁS)  prazo: 30 dias  Data final: 09/03/2026 23:59:59"
-    },
-    {
-      "data": "18/12/2025",
-      "descricao": "Expedida/certificada a intimação eletrônica (EXECUTADO -  BANCO BRADESCO S.A.)  prazo: 30 dias  Data final: 09/03/2026 23:59:59"
-    },
-    {
-      "data": "18/12/2025",
-      "descricao": "Proferido despacho de mero expediente"
-    },
-    {
-      "data": "04/12/2025",
-      "descricao": "Conclusos pra decisão/despacho"
-    },
-    {
-      "data": "04/12/2025",
-      "descricao": "Distribuído por dependência (CAN2CIV1J) - Número: 50019831220138210008/RS"
+      "data": "15/01/2026",
+      "descricao": "Conclusos para decisão"
     }
   ]
 }
 ```
-### Verificando o Status do Serviço
 
-#### Exemplo de Chamada
+---
 
-```
-curl -X GET "http://0.0.0.0:8000/status" -H "Accept: application/json"
-```
+## `POST /ask_ia`
 
-#### Exemplo de Resposta
+Permite fazer perguntas em linguagem natural sobre um processo.
 
-```
-HTTP/1.1 200 OK
-Content-Type: application/json
+### Body
 
+```json
 {
-        {"status":"ok",
-         "api":"ok",
-         "tribunal_site":"ok",
-         "response_time_ms":812.19}
+  "thread_id": "processo-5001646",
+  "question": "Consulte o processo 5001646-66.2026.8.21.0008 e me diga qual é a classe."
 }
 ```
 
-### Executando os Testes
-#### No Windows
-* Abrir terminal ou powershell
-* Navegar até a pasta do projeto
-* Buildar o docker com as bibliotecas de teste 
+### Exemplo
+
+```bash
+curl -X POST   "http://localhost:8000/ask_ia"   -H "Content-Type: application/json"   -d '{
+    "thread_id": "processo-5001646",
+    "question": "Consulte o processo 5001646-66.2026.8.21.0008 e me diga qual é a classe."
+  }'
 ```
-docker compose build --no-cache
+
+### Exemplo de resposta
+
+```json
+{
+  "answer": "O processo está classificado como Cumprimento de Sentença.",
+  "thread_id": "processo-5001646",
+  "npu": "5001646-66.2026.8.21.0008",
+  "llm_calls": 2,
+  "tool_calls": 1,
+  "external_calls": 1,
+  "cache_hits": 0,
+  "error": null,
+  "error_type": null
+}
 ```
-* Para executar o docker e os testes rode
+
+### Continuidade da conversa
+
+Utilizando o mesmo `thread_id`:
+
+```json
+{
+  "thread_id": "processo-5001646",
+  "question": "E quais são as partes dele?"
+}
 ```
-docker compose run --rm api poetry run pytest -q
-```  
-* Os testes devem executar automaticamente e o resultado será exibido na tela
 
-# Relatório Final
-## Descrição da fonte e dos principais desafios técnicos encontrados
-* A fonte escolhida foi o sistema de consulta processual do TJRS (Tribunal de Justiça do Rio Grande do Sul).
-### Principais desafios técnicos
-O maior desafio foi descobrir como o site autentica as requisições. Ele usa um token que depende de um "challenge" e de um segredo escondido no JavaScript. Precisei fazer engenharia reversa no main.js para entender o algoritmo — basicamente, dois números BigInt que mudam o hash. No meio do desenvolvimento, o site mudou a forma como esses números aparecem no código duas vezes em poucos dias. Foi frustrante, mas acabou virando oportunidade: criei uma lógica que busca esses valores dinamicamente no JS, em vez de ficar com números fixos.
+O estado anterior é recuperado do PostgreSQL e pode ser reutilizado pelo agente.
 
-Outro problema recorrente foi o rate limit (HTTP 429). O TJRS limita bastante as chamadas, e quando bate, trava tudo. Tive que implementar retentativas com backoff, detectar o erro tanto pelo status quanto pelo corpo da resposta, e usar cache no Redis para não sobrecarregar o servidor com a mesma consulta.
-## Estratégias adotadas para realizar a coleta
-Fiz tudo com requisições HTTP puras (usando curl_cffi para simular browser), sem Selenium nem Playwright — exatamente como o desafio pedia, para ficar leve e rápido.
+---
 
-Depois de entender o fluxo de autenticação, reproduzi a geração do token em Python: resolvi o challenge com SHA-256 e brute force limitado pelo maxnumber que o servidor manda. para deixar mais robusto, criei exceções específicas para cada tipo de erro:
-* 401/403 → renova o token automaticamente
-* 429 → backoff + retry-after quando tem header
-* 5xx ou HTML inesperado → erro de upstream
-* JSON quebrado → erro de parsing
+## Cache
 
-Coloquei cache no Redis para guardar tanto o resultado da consulta quanto o token (TTL curto), evitando regenerar o segredo toda hora. Depois que a resposta chega, faço uma limpeza rápida, valido os campos principais e monto um JSON organizado.
-## Resultados obtidos com o protótipo
-No final, o protótipo funciona bem estável. Consegue consultar processos do TJRS de forma automática, reproduzindo o auth do site (inclusive o challenge obfuscado), tratando erros comuns e usando cache para não abusar do servidor.
+A consulta processual utiliza Redis.
 
-Testei com vários NPUs reais e o cache reduziu bastante as chamadas repetidas. A solução suporta variações do site melhor do que uma versão estática, e quando bate rate limit, não trava: espera, tenta de novo e continua.
-## Validações implementadas para garantir qualidade dos dados
-Adicionei várias camadas de validação evitando o retorno de dados indesejados:
-* Verifico se o NPU tem 20 dígitos e calculo o dígito verificador (módulo 97) para garantir que é válido
-* Checo se a resposta veio como JSON válido e com a estrutura esperada
-* Trato respostas incompletas ou com campos nulos de forma graciosa (sem crashar)
-* No parsing, uso try/except para capturar qualquer erro de extração e levantar exceção customizada
-Isso ajuda a evitar que dados errados ou parciais cheguem ao cliente.
-## Possíveis melhorias para reduzir falhas e facilitar manutenção
-* Tornar a extração dos BigInts menos dependente de regex (talvez usar AST ou parser JS leve para encontrar os valores de forma mais segura)
-* Cachear também o main.js e o token em Redis com TTL bem curto, para múltiplas instâncias não ficarem baixando tudo de novo
-* Usar lock distribuído no Redis quando vários workers tentam regenerar o token ao mesmo tempo (evita picos de 401/429)
-* Respeitar mais o Retry-After do header quando vem, e adicionar jitter no backoff para parecer mais "humano"
-* Colocar logs estruturados (com JSON) e métricas simples (quantas 429, tempo médio de resposta, hit rate do cache) para facilitar debug quando o site mudar de novo
-* Expandir os testes para cobrir mais cenários ruins: token expirado, Redis down, resposta HTML no lugar de JSON, etc.
-No geral, foi um projeto ótimo de se fazer e bem desafiador — exigiu bastante debug e paciência, mas no final gerou algo que realmente funciona em produção.
-## Autor
-[Paulo Henrique De Souza Gomes](https://www.linkedin.com/in/paulo-henrique-4a849139/)
+```text
+NPU
+ │
+ ▼
+Redis
+ │
+ ├── HIT  → retorna imediatamente
+ │
+ └── MISS → consulta TJRS
+                 │
+                 ▼
+               Redis
+```
+
+O TTL pode ser configurado através de:
+
+```text
+CACHE_TTL_SECONDS
+```
+
+---
+
+## Tratamento de erros
+
+A aplicação possui exceções específicas para diferenciar problemas de entrada, autenticação, rate limit, upstream e parsing.
+
+| Situação | Comportamento |
+|---|---|
+| NPU inválido | erro de validação |
+| Processo inexistente | erro específico de processo não encontrado |
+| 401 / 403 | renovação/reprocessamento da autenticação |
+| HTTP 429 | retry com backoff |
+| HTTP 5xx | erro de upstream |
+| HTML inesperado | erro de upstream |
+| JSON inválido | erro de parsing |
+| Falha inesperada | HTTP 500 genérico com `request_id` |
+
+As respostas de erro incluem `request_id`, facilitando a correlação com os logs.
+
+---
+
+# Testes
+
+## Unitários
+
+```bash
+poetry run pytest tests/unit -q
+```
+
+Estado atual:
+
+```text
+41 passed
+```
+
+Os testes cobrem, entre outros pontos:
+
+- validação e utilitários de NPU;
+- extractors;
+- SearchService;
+- seleção de NPU pelo agente;
+- preparação de contexto;
+- routing do LangGraph;
+- tool calling;
+- reutilização de dados;
+- comportamento da API;
+- Request ID.
+
+## Integração
+
+Checkpoint PostgreSQL:
+
+```bash
+poetry run pytest tests/integration/test_checkpoint_postgres.py -q
+```
+
+Estado atual:
+
+```text
+3 passed
+```
+
+## Lint
+
+```bash
+poetry run ruff check .
+```
+
+## Validação Poetry
+
+```bash
+poetry check
+```
+
+## Build
+
+```bash
+poetry build
+```
+
+---
+
+# CI
+
+O projeto possui pipeline no GitHub Actions executado em `push` e `pull_request`.
+
+### Unit tests
+
+```text
+poetry check
+      ↓
+poetry install
+      ↓
+ruff check .
+      ↓
+pytest tests/unit
+      ↓
+poetry build
+```
+
+### Integração
+
+O GitHub Actions inicia um PostgreSQL temporário e executa:
+
+```text
+pytest tests/integration/test_checkpoint_postgres.py
+```
+
+Os testes de avaliação do agente que dependem de modelo e serviços externos ficam fora do pipeline principal para evitar tornar o CI lento e instável.
+
+---
+
+# Desafios técnicos
+
+## Autenticação dinâmica do TJRS
+
+O maior desafio da coleta foi reproduzir o fluxo de autenticação utilizado pelo TJRS.
+
+O tribunal disponibiliza um challenge que precisa ser resolvido antes da consulta. O processo exige reproduzir parte da lógica encontrada no JavaScript da aplicação e gerar corretamente os dados esperados pelo backend.
+
+Como os valores utilizados pelo site podem mudar, a solução evita depender apenas de constantes fixas.
+
+## Rate limiting
+
+O TJRS pode responder com HTTP `429`.
+
+Para evitar que esse comportamento torne a aplicação instável foram implementados:
+
+- retry;
+- backoff;
+- tratamento de `Retry-After`;
+- cache;
+- exceções específicas.
+
+## Mudanças na fonte
+
+Sites públicos mudam HTML, JavaScript e regras de acesso com frequência.
+
+Por isso a aplicação mantém separadas as responsabilidades de HTTP, autenticação, parsing, serviço e API.
+
+## Agente com estado persistente
+
+O uso do PostgreSQL como checkpointer do LangGraph permite restaurar o estado utilizando um `thread_id`, sem depender apenas da memória do processo Python.
+
+## Observabilidade ponta a ponta
+
+Uma requisição do agente pode atravessar várias camadas e serviços externos. O Request ID permite correlacionar o fluxo e medir quanto tempo foi gasto em LLM, TJRS, cache, tools e na requisição completa.
+
+---
+
+# Decisões de projeto
+
+### Por que HTTP em vez de Selenium?
+
+A coleta principal foi construída utilizando requisições HTTP para manter o crawler mais leve, previsível e eficiente.
+
+### Por que Redis?
+
+Evita consultas repetidas ao tribunal e reduz a chance de rate limit.
+
+### Por que PostgreSQL?
+
+É utilizado como backend persistente para os checkpoints do LangGraph.
+
+### Por que Ollama?
+
+Permite executar o modelo localmente, sem depender de uma API externa de LLM.
+
+### Por que LangGraph?
+
+O agente precisa manter estado, executar tools, decidir quando consultar dados e continuar a conversa.
+
+---
+
+# Limitações e próximos passos
+
+O projeto atualmente é voltado para estudo e portfólio e não foi desenhado para exposição irrestrita na internet.
+
+Possíveis evoluções:
+
+- otimizar a latência do modelo local;
+- avaliar modelos menores para decisões simples de tool calling;
+- melhorar métricas de tokens e tempo de inferência;
+- adicionar métricas agregadas de cache e erros;
+- adicionar lock distribuído para regeneração de autenticação;
+- ampliar cenários de testes de falha;
+- tornar a extração de dados do JavaScript ainda menos dependente de regex;
+- expandir a arquitetura para outros tribunais;
+- adicionar autenticação e rate limiting caso a API seja publicada.
+
+---
+
+# Estrutura geral do projeto
+
+```text
+CrawlerJus/
+├── api/
+│   ├── router.py
+│   ├── error_handlers.py
+│   ├── logging_config.py
+│   └── request_context.py
+│
+├── crawler_jus/
+│   ├── services/
+│   │   └── search_service.py
+│   └── ...
+│
+├── legal_ai/
+│   ├── nodes.py
+│   ├── tools.py
+│   └── ...
+│
+├── tests/
+│   ├── unit/
+│   ├── integration/
+│   └── ...
+│
+├── .github/
+│   └── workflows/
+│       └── ci.yml
+│
+├── Dockerfile
+├── docker-compose.yml
+├── docker-compose.prod.yml
+├── pyproject.toml
+└── README.md
+```
+
+---
+
+# Autor
+
+**Paulo Henrique De Souza Gomes**
+
+[LinkedIn](https://www.linkedin.com/in/paulo-henrique-4a849139/)
+
+---
+
+## Observação
+
+Este projeto realiza consultas sobre uma fonte pública e foi desenvolvido com finalidade de estudo, demonstração técnica e portfólio.
+
+A disponibilidade e a estrutura dos dados dependem do serviço externo consultado. Mudanças no TJRS podem exigir adaptações na camada de coleta.
