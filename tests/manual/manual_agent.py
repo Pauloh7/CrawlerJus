@@ -4,17 +4,11 @@ from legal_ai.agent import create_legal_agent
 from crawler_jus.crawler import Crawler
 from crawler_jus.services.search_service import SearchService
 
-
 TESTES = [
-    "Quais foram as últimas movimentações do processo "
-    "5001646-66.2026.8.21.0008?",
-
-    "Quais são as partes do processo "
-    "5001646-66.2026.8.21.0008?",
-
+    "Quais foram as últimas movimentações do processo " "5001646-66.2026.8.21.0008?",
+    "Quais são as partes do processo " "5001646-66.2026.8.21.0008?",
     "Explique de forma simples o que aconteceu no processo "
     "5001646-66.2026.8.21.0008.",
-
     "O que significa conclusão para decisão?",
 ]
 

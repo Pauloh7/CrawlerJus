@@ -4,7 +4,6 @@ from langchain_ollama import ChatOllama
 from legal_ai.tools import create_process_tools
 from crawler_jus.services.search_service import SearchService
 
-
 SYSTEM_PROMPT = """
 Você é um assistente especializado em processos judiciais brasileiros.
 
@@ -22,9 +21,15 @@ Explique as informações de forma simples e objetiva.
 """
 
 
-def create_legal_agent(
-    service: SearchService
-):
+def create_legal_agent(service: SearchService):
+    """Cria o agente jurídico simples baseado em Qwen e ferramentas de processo.
+    
+    Args:
+        service (SearchService): Serviço usado pela ferramenta de consulta processual.
+    
+    Returns:
+        Agente LangChain configurado com modelo, ferramentas e prompt de sistema.
+    """
     model = ChatOllama(
         model="qwen3:8b",
         temperature=0,

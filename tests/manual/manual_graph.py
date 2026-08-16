@@ -8,31 +8,28 @@ from crawler_jus.services.search_service import SearchService
 
 async def main():
     crawler = Crawler()
-    
 
     try:
         service = SearchService(crawler)
 
-        graph = create_legal_graph(
-            service
-        )
+        graph = create_legal_graph(service)
 
         result = await graph.ainvoke(
-    {
-        "messages": [
             {
-                "role": "user",
-                "content": (
-                    "Quais são as últimas "
-                    "movimentações do processo "
-                    "5001646-66.2026.8.21.0008?"
-                ),
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": (
+                            "Quais são as últimas "
+                            "movimentações do processo "
+                            "5001646-66.2026.8.21.0008?"
+                        ),
+                    }
+                ],
+                "llm_calls": 0,
+                "tool_calls_count": 0,
             }
-        ],
-        "llm_calls": 0,
-        "tool_calls_count": 0,
-    }
-    )
+        )
 
         for message in result["messages"]:
             print("\n" + "=" * 80)
@@ -60,15 +57,12 @@ async def main():
 
         print(
             "TOOL CALLS:",
-            result.get(
-                "tool_calls_count"
-            ),
+            result.get("tool_calls_count"),
         )
 
         print(
             "PROCESS DATA EXISTE:",
-            result.get("process_data")
-            is not None,
+            result.get("process_data") is not None,
         )
 
     finally:

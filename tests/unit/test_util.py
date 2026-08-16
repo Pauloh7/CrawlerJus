@@ -27,5 +27,3 @@ def test_build_urls():
         f"https://consulta-processual-service.tjrs.jus.br/api/consulta-service/v1/consultaMovimentacao?numeroProcesso={npu}&codComarca={comarca}"
         in build_url_movimento(npu, comarca)
     )
-
-

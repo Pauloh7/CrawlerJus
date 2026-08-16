@@ -40,6 +40,7 @@ async def test_agent_deve_consultar_processo():
     finally:
         await crawler.close()
 
+
 @pytest.mark.asyncio
 async def test_agent_nao_deve_consultar_processo():
     crawler = Crawler()
@@ -53,9 +54,7 @@ async def test_agent_nao_deve_consultar_processo():
                 "messages": [
                     {
                         "role": "user",
-                        "content": (
-                            "O que significa conclusão para decisão?"
-                        ),
+                        "content": ("O que significa conclusão para decisão?"),
                     }
                 ]
             }

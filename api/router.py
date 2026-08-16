@@ -1,30 +1,55 @@
+import os
 import time
-import httpx
-from . import schema
-from fastapi import Query
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+
+import httpx
+from dotenv import load_dotenv
+from fastapi import FastAPI, Query
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+from api import schema
+from api.enums import HealthStatus
+from api.error_handlers import generic_exception_handler, tjrs_exception_handler
+from api.exceptions import TJRSBaseError
 from crawler_jus.crawler import Crawler
 from crawler_jus.services.search_service import SearchService
-from api.exceptions import TJRSBaseError
-from api.error_handlers import tjrs_exception_handler, generic_exception_handler
-from api.enums import HealthStatus
-from legal_ai.agent import create_legal_agent
 from legal_ai.graph import create_legal_graph
+
+
+load_dotenv()
+
+TJRS_URL = "https://www.tjrs.jus.br/novo/busca/?return=proc&client=wp_index#"
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Gerencia os recursos compartilhados durante o ciclo de vida da API.
+    
+    Inicializa crawler, SearchService, checkpoint PostgreSQL e grafo jurídico, armazenando-os em app.state e fechando o crawler no shutdown.
+    
+    Args:
+        app (FastAPI): Instância da aplicação FastAPI.
+    """
     crawler = Crawler()
     service = SearchService(crawler)
+    db_url = os.getenv("LANGGRAPH_DB_URL")
 
-    legal_graph = create_legal_graph(service)
-
-    app.state.crawler = crawler
-    app.state.search_service = service
-    app.state.legal_graph = legal_graph
+    if not db_url:
+        raise RuntimeError("LANGGRAPH_DB_URL não configurada.")
 
     try:
-        yield
+        async with AsyncPostgresSaver.from_conn_string(db_url) as checkpointer:
+            await checkpointer.setup()
+
+            legal_graph = create_legal_graph(
+                service,
+                checkpointer,
+            )
+
+            app.state.crawler = crawler
+            app.state.search_service = service
+            app.state.legal_graph = legal_graph
+            yield
 
     finally:
         await crawler.close()
@@ -35,13 +60,14 @@ app = FastAPI(lifespan=lifespan)
 app.add_exception_handler(TJRSBaseError, tjrs_exception_handler)
 app.add_exception_handler(Exception, generic_exception_handler)
 
-TJRS_URL = "https://www.tjrs.jus.br/novo/busca/?return=proc&client=wp_index#"
-
-@app.get("/status")
-
 
 @app.get("/status")
 async def healthcheck():
+    """Verifica a disponibilidade da API e do site do TJRS.
+    
+    Returns:
+        dict: Status geral, status da API, status do tribunal e tempo de resposta do site em milissegundos.
+    """
     api_status = HealthStatus.OK
     site_status = HealthStatus.DOWN
     response_time_ms = None
@@ -70,16 +96,27 @@ async def healthcheck():
         "response_time_ms": response_time_ms,
     }
 
+
 @app.post("/search_npu")
-async def search_npu(cliente: schema.ClienteInput, force_refresh: bool = Query(False)) -> dict:
-    """Parte da api que recebe o post com dados do processo e executa chamada para extração dos dados
-    Args:
-        cliente (schema.ClienteInput): Json com numero do processo
-        force_refresh (bool): Determina se é para forçar ou nao refresh no cache redis
-    Returns:
-        processo_info (dict): Dicionário com dados do processo
+async def search_npu(
+    cliente: schema.ClienteInput,
+    force_refresh: bool = Query(False),
+) -> dict:
     """
-    return await app.state.search_service.search_npu(cliente.npu, force_refresh=force_refresh)
+    Recebe um NPU e executa a consulta dos dados do processo.
+
+    Args:
+        cliente: Payload contendo o número do processo.
+        force_refresh: Se True, ignora o cache Redis.
+
+    Returns:
+        Dicionário com os dados do processo.
+    """
+    return await app.state.search_service.search_npu(
+        cliente.npu,
+        force_refresh=force_refresh,
+    )
+
 
 @app.post(
     "/ask_ia",
@@ -88,13 +125,17 @@ async def search_npu(cliente: schema.ClienteInput, force_refresh: bool = Query(F
 async def ask_ia(
     data: schema.AskIAInput,
 ):
+    """Executa uma pergunta no grafo jurídico mantendo o contexto da thread.
+    
+    Args:
+        data (schema.AskIAInput): Identificador da thread e pergunta do usuário.
+    
+    Returns:
+        dict: Resposta do agente, NPU atual, contadores de execução e dados de erro.
+    """
     graph = app.state.legal_graph
 
-    config = {
-        "configurable": {
-            "thread_id": data.thread_id
-        }
-    }
+    config = {"configurable": {"thread_id": data.thread_id}}
 
     result = await graph.ainvoke(
         {
@@ -111,25 +152,13 @@ async def ask_ia(
     answer = result["messages"][-1].content
 
     return {
-    "answer": answer,
-    "thread_id": data.thread_id,
-
-    "npu": result.get("npu"),
-
-    "llm_calls": result.get(
-        "llm_calls"
-    ),
-
-    "tool_calls": result.get(
-        "tool_calls_count"
-    ),
-
-    "external_calls": result.get(
-        "external_calls_count"
-    ),
-
-    "cache_hits": result.get(
-        "cache_hits"
-    ),
+        "answer": answer,
+        "thread_id": data.thread_id,
+        "npu": result.get("npu"),
+        "llm_calls": result.get("llm_calls"),
+        "tool_calls": result.get("tool_calls_count"),
+        "external_calls": result.get("external_calls_count"),
+        "cache_hits": result.get("cache_hits"),
+        "error": result.get("error"),
+        "error_type": result.get("error_type"),
     }
-    

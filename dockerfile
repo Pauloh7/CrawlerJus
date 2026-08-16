@@ -1,38 +1,34 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
-
-WORKDIR /crawlerjus
 ENV PYTHONPATH=/crawlerjus
 
+WORKDIR /crawlerjus
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    curl \
-    gcc \
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        gcc \
     && rm -rf /var/lib/apt/lists/*
 
-
 ENV POETRY_VERSION=1.8.3
+
 RUN pip install --no-cache-dir "poetry==$POETRY_VERSION" \
- && poetry config virtualenvs.create false
+    && poetry config virtualenvs.create false
 
-
-COPY pyproject.toml poetry.lock* /crawlerjus/
-
+COPY pyproject.toml poetry.lock* ./
 
 ARG ENV=prod
+
 RUN if [ "$ENV" = "dev" ]; then \
-      poetry install --no-interaction --no-ansi ; \
+        poetry install --no-interaction --no-ansi; \
     else \
-      poetry install --no-interaction --no-ansi --only main ; \
+        poetry install --no-interaction --no-ansi --only main; \
     fi
 
-RUN poetry config virtualenvs.create false \
-&& poetry install --no-interaction --no-ansi --only main
-
-COPY . /crawlerjus
+COPY . .
 
 EXPOSE 8000
 

@@ -13,11 +13,7 @@ async def main():
 
         graph = create_legal_graph(service)
 
-        config = {
-            "configurable": {
-                "thread_id": "teste-1"
-            }
-        }
+        config = {"configurable": {"thread_id": "teste-1"}}
 
         print("\nPRIMEIRA PERGUNTA")
 
@@ -53,9 +49,7 @@ async def main():
                 "messages": [
                     {
                         "role": "user",
-                        "content": (
-                            "E quais são as partes dele?"
-                        ),
+                        "content": ("E quais são as partes dele?"),
                     }
                 ]
             },

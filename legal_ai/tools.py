@@ -1,24 +1,47 @@
+import logging
+
 from langchain.tools import tool
 
 from crawler_jus.services.search_service import SearchService
 
 
+logger = logging.getLogger(__name__)
+
+
 def create_process_tools(service: SearchService):
+    """Cria as ferramentas processuais disponibilizadas ao agente jurídico.
+
+    Args:
+        service (SearchService): Serviço usado para executar consultas ao TJRS.
+
+    Returns:
+        list: Lista de ferramentas LangChain vinculadas ao serviço.
+    """
 
     @tool
     async def consultar_processo(npu: str) -> dict:
         """
-        Consulta um processo judicial do TJRS pelo número CNJ/NPU.
+        Consulta dados de um processo judicial no TJRS.
 
-        Use esta ferramenta quando o usuário pedir informações
-        sobre um processo judicial do Tribunal de Justiça
-        do Rio Grande do Sul.
+        Use esta ferramenta sempre que o usuário fornecer um número
+        de processo e solicitar dados concretos desse processo,
+        como classe, partes, situação, comarca ou movimentações.
 
-        Retorna dados básicos, partes e movimentações.
+        Não valide ou altere o NPU antes da chamada.
+        A aplicação fará a validação.
+
+        Args:
+            npu: Número do processo exatamente como informado pelo usuário.
+
+        Returns:
+            Dados estruturados do processo.
         """
-
-        print(
-            f"[AI TOOL] consultar_processo: {npu}"
+        logger.info(
+            "Consultando processo via AI tool",
+            extra={
+                "npu": npu,
+                "tool": "consultar_processo",
+            },
         )
 
         return await service.search_npu(npu)
