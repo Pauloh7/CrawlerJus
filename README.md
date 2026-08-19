@@ -1,5 +1,9 @@
 # CrawlerJus
 
+[![CI](https://github.com/Pauloh7/CrawlerJus/actions/workflows/ci.yml/badge.svg)](https://github.com/Pauloh7/CrawlerJus/actions/workflows/ci.yml)
+[![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/release/python-3120/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 API de consulta processual desenvolvida em Python para coleta estruturada de dados do **Tribunal de Justiça do Rio Grande do Sul (TJRS)**, com cache, tratamento de falhas, persistência de contexto e um agente de IA capaz de consultar e responder perguntas sobre processos judiciais.
 
 O projeto nasceu a partir de um desafio técnico da **Jusbrasil** e evoluiu para um projeto de portfólio com foco em **web scraping resiliente, APIs assíncronas, observabilidade, testes, CI e aplicações de IA generativa**.
@@ -23,6 +27,7 @@ O projeto nasceu a partir de um desafio técnico da **Jusbrasil** e evoluiu para
 - [Desafios técnicos](#desafios-técnicos)
 - [Decisões de projeto](#decisões-de-projeto)
 - [Limitações e próximos passos](#limitações-e-próximos-passos)
+- [Licença](#licença)
 - [Autor](#autor)
 
 ---
@@ -386,6 +391,14 @@ Para desenvolvimento local sem Docker também é utilizado:
 ```bash
 git clone git@github.com:Pauloh7/CrawlerJus.git
 cd CrawlerJus
+```
+
+### Variáveis de ambiente
+
+O projeto inclui um [`.env.example`](.env.example) com as variáveis usadas em desenvolvimento local sem Docker (o `docker-compose.yml` já define essas variáveis para os containers, então esse passo é opcional ao rodar via Docker).
+
+```bash
+cp .env.example .env
 ```
 
 ### Desenvolvimento com Docker
@@ -896,6 +909,12 @@ CrawlerJus/
 ├── pyproject.toml
 └── README.md
 ```
+
+---
+
+# Licença
+
+Este projeto está licenciado sob os termos da [licença MIT](LICENSE).
 
 ---
 
