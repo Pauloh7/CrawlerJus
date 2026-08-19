@@ -12,6 +12,7 @@ build/
 venv/
 .env
 .env.*
+!.env.example
 
 # Docker
 *.log
