@@ -17,6 +17,9 @@ class AgentState(TypedDict, total=False):
     question_type: str | None
     context_data: dict[str, Any] | None
 
+    active_skill: str | None
+    skill_instructions: str | None
+
     llm_calls: int
     tool_calls_count: int
     external_calls_count: int

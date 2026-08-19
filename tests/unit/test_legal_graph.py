@@ -116,7 +116,10 @@ async def test_legal_graph_deve_executar_fluxo_completo():
     assert result["messages"][-1].content == (
         "A classe do processo é " "CUMPRIMENTO DE SENTENÇA."
     )
-
+    assert (
+        result["active_skill"]
+        == "consulta-processual"
+    )
 
 @pytest.mark.asyncio
 async def test_legal_graph_deve_finalizar_sem_tool_call():

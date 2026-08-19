@@ -8,6 +8,10 @@ from langgraph.graph import END
 from api.exceptions import TJRSBaseError
 from api.request_context import request_id_context
 from crawler_jus.util import valida_npu
+from legal_ai.skill_loader import load_skill
+from legal_ai.skill_selector import (
+    select_skill_name,
+)
 from legal_ai.state import AgentState
 from legal_ai.util import (
     classify_question,
@@ -46,6 +50,38 @@ Responda usando apenas os dados disponíveis na conversa
 ou retornados pelas ferramentas.
 """
 
+async def select_skill(
+    state: AgentState,
+):
+    question = (
+        get_last_user_question(state)
+        or ""
+    )
+
+    skill_name = select_skill_name(
+        question
+    )
+
+    skill = load_skill(
+        skill_name
+    )
+
+    logger.info(
+        "agent_skill_selected",
+        extra={
+            "request_id": (
+                request_id_context.get()
+            ),
+            "skill": skill.name,
+        },
+    )
+
+    return {
+        "active_skill": skill.name,
+        "skill_instructions": (
+            skill.instructions
+        ),
+    }
 
 def has_cached_process(
     state: AgentState,
@@ -356,6 +392,22 @@ async def call_model(
             "content": SYSTEM_PROMPT,
         }
     ]
+
+    skill_instructions = state.get(
+        "skill_instructions"
+    )
+
+    if skill_instructions:
+        messages.append(
+            {
+                "role": "system",
+                "content": (
+                    "Instruções da skill ativa "
+                    f"'{state.get('active_skill')}':\n\n"
+                    f"{skill_instructions}"
+                ),
+            }
+        )
 
     context_data = state.get("context_data")
 
