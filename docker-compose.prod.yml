@@ -79,10 +79,17 @@ services:
   ollama:
     image: ollama/ollama:latest
 
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities:
+                - gpu
+
     volumes:
       - ollama_data:/root/.ollama
-
-    restart: unless-stopped
 
     healthcheck:
       test:

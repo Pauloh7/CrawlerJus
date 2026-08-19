@@ -13,6 +13,7 @@ from legal_ai.nodes import (
     call_model,
     prepare_context,
     search_process,
+    select_skill,
     should_continue,
 )
 from legal_ai.state import AgentState
@@ -65,6 +66,13 @@ def create_legal_graph(
 
     model_with_tools = model.bind_tools(tools)
 
+
+    async def select_skill_node(
+        state: AgentState,
+    ):
+        return await select_skill(state)
+
+    
     async def agent_node(
         state: AgentState,
     ):
@@ -105,6 +113,11 @@ def create_legal_graph(
     )
 
     graph_builder.add_node(
+        "select_skill",
+        select_skill_node,
+    )
+
+    graph_builder.add_node(
         "agent",
         agent_node,
     )
@@ -116,6 +129,11 @@ def create_legal_graph(
 
     graph_builder.add_edge(
         START,
+        "select_skill",
+    )
+
+    graph_builder.add_edge(
+        "select_skill",
         "prepare_context",
     )
 
